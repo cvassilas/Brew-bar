@@ -370,7 +370,7 @@ function detail(id) {
   const valHtml = k => k === 'ratio' ? `<small>1:</small>${fmt(k, s[k])}` : `${fmt(k, s[k])}<small>${tl(k)[1]}</small>`;
   const dials = Object.keys(b.p).map(k => {
     const [mn, mx, st] = b.p[k], [lab] = tl(k);
-    return `<div><div class="dial-top"><label class="label" for="r-${k}">${lab}</label><span class="dial-val" id="v-${k}"></span></div>
+    return `<div><div class="dial-top"><label class="label" for="r-${k}">${lab}</label><div class="stepper"><button class="step" data-step="-1" data-sk="${k}" aria-label="Decrease ${lab}">−</button><span class="dial-val" id="v-${k}"></span><button class="step" data-step="1" data-sk="${k}" aria-label="Increase ${lab}">+</button></div></div>
       <input type="range" id="r-${k}" data-k="${k}" min="${mn}" max="${mx}" step="${st}" value="${s[k]}">
       <div class="ticks"><span>${fmt(k, mn)}</span><span>${fmt(k, mx)}</span></div>
       ${k === 'grind' ? `<div class="hint" id="h-grind"></div>` : ''}
@@ -528,6 +528,11 @@ function detail(id) {
   /* controls */
   app.querySelectorAll('input[type=range]').forEach(el => {
     el.oninput = () => { s[el.dataset.k] = parseFloat(el.value); cur.editing = true; clearTimeout(cur._e); cur._e = setTimeout(() => cur && (cur.editing = false), 2500); paint(); showFix(); };
+  });
+  app.querySelectorAll('[data-step]').forEach(el => el.onclick = () => {
+    const k = el.dataset.sk, [mn, mx, st] = b.p[k];
+    s[k] = r1(clamp(Math.round((s[k] + (+el.dataset.step) * st) / st) * st, mn, mx)); setSlider(k);
+    cur.editing = true; clearTimeout(cur._e); cur._e = setTimeout(() => cur && (cur.editing = false), 2500); paint(); showFix();
   });
   app.querySelectorAll('[data-sugar]').forEach(el => el.onclick = () => { s.sugar = +el.dataset.sugar; paint(); });
   app.querySelectorAll('[data-cups]').forEach(el => el.onclick = () => {
