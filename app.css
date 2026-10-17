@@ -8,7 +8,11 @@
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme]){
+/* Portafilter dark. data-scheme is set by the app (Auto follows the phone); the media query covers the first paint without it. */
+:root[data-scheme=dark]{
+  --bg:#141715; --surface:#1C201E; --ink:#E8ECE7; --muted:#9AA39D; --line:#2E3431;
+  --crema:#E0A257; --crema-soft:#3A2C1C; --steel:#9CC2B9; --ok:#6FCF97; --warn:#F2867E; color-scheme:dark}
+@media (prefers-color-scheme: dark){:root:not([data-scheme]){
   --bg:#141715; --surface:#1C201E; --ink:#E8ECE7; --muted:#9AA39D; --line:#2E3431;
   --crema:#E0A257; --crema-soft:#3A2C1C; --steel:#9CC2B9; --ok:#6FCF97; --warn:#F2867E; color-scheme:dark}}
 
@@ -170,15 +174,26 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .sf-label{font-family:var(--f-body);font-size:14px;font-weight:600;fill:var(--crema)}
 .skip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-bottom:4px}
 .dlg .skip input{width:auto;margin:0}
-/* ---------- Themes (data-theme on <html>; none = Portafilter, follows the phone's light/dark) ---------- */
+/* ---------- Themes: data-theme picks the palette, data-scheme picks its light or dark version ---------- */
 :root[data-theme=aegean]{--bg:#F4F7FB;--surface:#FFFFFF;--ink:#0E2340;--muted:#56677F;--line:#D6DFEA;
   --crema:#1D5FAF;--crema-soft:#E3ECF8;--steel:#0E3A75;--ok:#2E7D4F;--warn:#B3261E;color-scheme:light}
-:root[data-theme=espresso]{--bg:#1A1310;--surface:#241B16;--ink:#F2E8DF;--muted:#B3A397;--line:#3A2D25;
-  --crema:#D9A066;--crema-soft:#3B2A1D;--steel:#E9C9A0;--ok:#7BC79A;--warn:#F08A7E;color-scheme:dark}
+:root[data-theme=aegean][data-scheme=dark]{--bg:#0B1626;--surface:#12223A;--ink:#E6EEF8;--muted:#9DB0C8;--line:#24385A;
+  --crema:#6FA8F0;--crema-soft:#17304F;--steel:#A9C9F2;--ok:#6FCF97;--warn:#F2867E;color-scheme:dark}
 :root[data-theme=oat]{--bg:#EDEBE5;--surface:#F8F7F3;--ink:#2A2B26;--muted:#66685E;--line:#D8D6CC;
   --crema:#5E7D4F;--crema-soft:#E1E8D8;--steel:#3F4B37;--ok:#2E7D4F;--warn:#B3261E;color-scheme:light}
-:root[data-theme=night]{--bg:#000000;--surface:#0E0E0E;--ink:#F5F5F5;--muted:#A3A3A3;--line:#2A2A2A;
+:root[data-theme=oat][data-scheme=dark]{--bg:#1B1D18;--surface:#24271F;--ink:#E9EAE2;--muted:#A3A699;--line:#34382D;
+  --crema:#9BBF86;--crema-soft:#2B3524;--steel:#C4D6B4;--ok:#6FCF97;--warn:#F2867E;color-scheme:dark}
+:root[data-theme=espresso]{--bg:#F3EDE7;--surface:#FBF8F5;--ink:#2B1D15;--muted:#73625A;--line:#E0D4C9;
+  --crema:#9A5B22;--crema-soft:#EFE0D1;--steel:#4A2E1F;--ok:#2E7D4F;--warn:#B3261E;color-scheme:light}
+:root[data-theme=espresso][data-scheme=dark]{--bg:#1A1310;--surface:#241B16;--ink:#F2E8DF;--muted:#B3A397;--line:#3A2D25;
+  --crema:#D9A066;--crema-soft:#3B2A1D;--steel:#E9C9A0;--ok:#7BC79A;--warn:#F08A7E;color-scheme:dark}
+:root[data-theme=night]{--bg:#FFFFFF;--surface:#F5F5F5;--ink:#0A0A0A;--muted:#575757;--line:#E0E0E0;
+  --crema:#A86400;--crema-soft:#FFF1D6;--steel:#111111;--ok:#1F7A43;--warn:#B3261E;color-scheme:light}
+:root[data-theme=night][data-scheme=dark]{--bg:#000000;--surface:#0E0E0E;--ink:#F5F5F5;--muted:#A3A3A3;--line:#2A2A2A;
   --crema:#FFB020;--crema-soft:#2A1F08;--steel:#FFB020;--ok:#4ADE80;--warn:#FF6B6B;color-scheme:dark}
+.modes{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin-top:10px;background:var(--surface)}
+.mode-opt{border:0;background:transparent;border-radius:999px;padding:7px 16px;font-size:13.5px;color:var(--muted)}
+.mode-opt[aria-pressed=true]{background:var(--steel);color:var(--surface);font-weight:600}
 .themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
 .theme-opt{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);text-align:left}
 .theme-opt[aria-pressed=true]{border-color:var(--crema);box-shadow:0 0 0 2px var(--crema)}

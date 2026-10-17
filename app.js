@@ -351,22 +351,27 @@ function toast(msg) {
 
 /* ---------- Themes ---------- */
 const THEMES = [
-  ['portafilter', 'Portafilter', 'Steel and crema · follows light/dark', ['#2F4A45', '#A9661B', '#EEF0EC'], null],
-  ['aegean', 'Aegean', 'White and Greek blue', ['#0E3A75', '#1D5FAF', '#F4F7FB'], '#F4F7FB'],
-  ['oat', 'Oat', 'Soft grey with sage green', ['#3F4B37', '#5E7D4F', '#EDEBE5'], '#EDEBE5'],
-  ['espresso', 'Espresso', 'Roasted brown, always dark', ['#1A1310', '#D9A066', '#F2E8DF'], '#1A1310'],
-  ['night', 'Night shift', 'True black and amber, always dark', ['#000000', '#FFB020', '#F5F5F5'], '#000000']];
-function setTheme(id) {
-  const t = THEMES.find(x => x[0] === id) || THEMES[0];
-  if (t[0] === 'portafilter') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t[0];
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  $('meta-theme').setAttribute('content', t[4] || (dark ? '#141715' : '#EEF0EC'));
-  LS.set('theme', t[0]);
+  ['portafilter', 'Portafilter', 'Steel green and crema', ['#2F4A45', '#A9661B', '#9CC2B9']],
+  ['aegean', 'Aegean', 'White and Greek blue', ['#0E3A75', '#1D5FAF', '#6FA8F0']],
+  ['oat', 'Oat', 'Soft grey and sage green', ['#3F4B37', '#5E7D4F', '#9BBF86']],
+  ['espresso', 'Espresso', 'Roasted brown and caramel', ['#2B1D15', '#9A5B22', '#D9A066']],
+  ['night', 'Night shift', 'High contrast black and amber', ['#0A0A0A', '#A86400', '#FFB020']]];
+const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function applyLook() {
+  const root = document.documentElement, theme = LS.get('theme', 'portafilter'), mode = LS.get('mode', 'auto');
+  if (theme === 'portafilter') delete root.dataset.theme; else root.dataset.theme = theme;
+  root.dataset.scheme = mode === 'auto' ? (darkMQ.matches ? 'dark' : 'light') : mode;
+  requestAnimationFrame(() => $('meta-theme').setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#2F4A45'));
 }
-setTheme(LS.get('theme', 'portafilter'));
-const themePicker = () => { const curT = LS.get('theme', 'portafilter');
-  return `<section style="margin-top:28px"><h2 class="label">Theme</h2><div class="themes">${THEMES.map(([id, name, desc, sw]) =>
-    `<button class="theme-opt" data-theme-id="${id}" aria-pressed="${id === curT}"><span class="sw">${sw.map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${name}</b><span>${desc}</span></button>`).join('')}</div></section>`; };
+darkMQ.addEventListener?.('change', applyLook);
+applyLook();
+const themePicker = () => { const curT = LS.get('theme', 'portafilter'), curM = LS.get('mode', 'auto');
+  return `<section style="margin-top:28px"><h2 class="label">Appearance</h2>
+    <div class="modes" role="group" aria-label="Light or dark">${MODES.map(([id, name]) => `<button class="mode-opt" data-mode-id="${id}" aria-pressed="${id === curM}">${name}</button>`).join('')}</div>
+    <div class="themes">${THEMES.map(([id, name, desc, sw]) =>
+    `<button class="theme-opt" data-theme-id="${id}" aria-pressed="${id === curT}"><span class="sw">${sw.map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${name}</b><span>${desc}</span></button>`).join('')}</div>
+    <p class="small">Auto follows your phone's light and dark setting.</p></section>`; };
 
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0, lock: null };
@@ -392,8 +397,10 @@ function home() {
     <p class="note">${Sync.on ? 'Settings sync through your GitHub gist.' : 'Settings are saved on this phone. Tap “Sync off” to share them across phones.'}
       Grind numbers assume a zero point calibrated to burr touch; if your espresso sits nearer 2.0 or 2.5, shift every brewer by the same amount.</p>
     ${themePicker()}`;
-  app.querySelectorAll('[data-theme-id]').forEach(el => el.onclick = () => { setTheme(el.dataset.themeId);
+  app.querySelectorAll('[data-theme-id]').forEach(el => el.onclick = () => { LS.set('theme', el.dataset.themeId); applyLook();
     app.querySelectorAll('[data-theme-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
+  app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook();
+    app.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
 }
 
