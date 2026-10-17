@@ -51,19 +51,23 @@ const BREWERS = {
       [r0(s.time * .55), `Coffee starts to flow. It should run like warm honey.`],
       [s.time, `As soon as it turns pale and starts to gurgle, take it off and cool the base under a cold tap.`]] },
   briki: { name: 'Greek coffee', gear: 'Briki · Timemore 064S', kind: 'water', sugar: true, cups: [1, 2, 1],
-    p: { dose: [5, 22, .5, 7], grind: [0, 16, .1, 0], temp: [5, 40, 1, 18], water: [50, 250, 5, 75], time: [120, 360, 10, 210] },
-    taste: [['Bitter / burnt', 'Heating too fast or it boiled. Slower, gentler heat.', { time: 30 }],
-      ['Little kaimaki', 'Grind as fine as possible and heat more slowly so the foam builds.', { grind: -.5, time: 30 }],
+    prep: { vessel: 'Empty briki', after: s => `Now pour ${s.water} g of cold water.` },
+    p: { dose: [5, 22, .5, 7], grind: [0, 16, .1, 0], temp: [5, 40, 1, 18], hob: [1, 9, 1, 3], water: [50, 250, 5, 75], time: [120, 360, 10, 210] },
+    taste: [['Bitter / burnt', 'Heating too fast or it boiled. Turn the hob down so it heats more gently.', { hob: -1, time: 30 }],
+      ['Little kaimaki', 'Grind as fine as possible and heat more slowly so the foam builds.', { grind: -.5, hob: -1, time: 30 }],
+      ['Takes too long', 'Turn the hob up one step.', { hob: 1, time: -30 }],
       ['Weak', 'A heaped spoon more coffee.', { dose: 1 }],
       ['Too strong / muddy', 'Less coffee for the same water.', { dose: -1 }]],
     tip: 'The 064S can\'t quite reach true Greek/Turkish powder (its finest is around 235 µm), so run it at zero and expect a little less kaimaki than with pre-ground Greek coffee.',
     steps: s => [
       [0, `Grind ${s.dose} g at ${s.grind} (finest).`],
-      [0, `Weigh ${s.water} g of cold water (${s.temp}°C) into the briki${s.sugarTxt}. Stir in the coffee until no dry clumps remain.`, s.water],
-      [0, `Low heat. Don't stir again from here.`],
+      [0, `Empty briki on the scale, tare. Add the coffee${s.sugarTxt}, tare again.`],
+      [0, `Pour ${s.water} g of cold water (${s.temp}°C) and stir until no dry clumps remain.`, s.water],
+      [0, `Hob on ${s.hob} of 9. Don't stir again from here.`],
       [r0(s.time * .75), `Foam (kaimaki) rises and the surface starts to crack at the edges.`],
       [s.time, `Just before it boils over, take it off. Spoon the foam into the cup${s.cups > 1 ? 's' : ''} first, then pour slowly.`]] },
   v60: { name: 'V60', gear: 'Hario V60 02 · Timemore 064S', kind: 'ratio', cups: [1, 2, 1],
+    prep: { vessel: 'V60 with rinsed paper', autoArm: true, after: s => `Ready. The timer starts when you begin the bloom pour.` },
     /* Planned pour curve for pace coaching: bloom, then two pours at a steady ~6 g/s from a centred spiral. */
     pourPlan: s => { const rate = 6, b = r0(s.dose * 2.5), h = r0(s.water * .6);
       let t = 0, from = 0; const pours = [];
@@ -80,7 +84,7 @@ const BREWERS = {
       ['Flat / muted', 'Light roasts need heat. Hotter and a touch finer.', { temp: 2, grind: -.3 }]],
     tip: 'Drawdown long and flat-tasting: grind coarser. Fast and thin: grind finer. London tap water mutes light roasts; filtered or remineralised water makes a bigger difference here than anywhere else.',
     steps: s => { const b = r0(s.dose * 2.5), h = r0(s.water * .6); return [
-      [0, `Rinse the paper and dump the water. Grind ${s.dose} g at ${s.grind}. Water at ${s.temp}°C. Tare with the coffee in.`],
+      [0, `Rinse the paper and dump the water. Grind ${s.dose} g at ${s.grind}. Water at ${s.temp}°C. V60 on the scale, tare; add coffee, tare again.`],
       [0, `Bloom: pour to ${b} g, swirl to wet all the grounds.`, b],
       [45, `Pour steadily to ${h} g in slow circles.`, h],
       [75, `Pour to ${s.water} g. Give a gentle swirl to flatten the bed.`, s.water],
@@ -113,7 +117,7 @@ const BREWERS = {
       [Math.max(10, s.time - 30), `Swirl gently, then press slowly for about 30 s.`],
       [s.time, `Stop at the hiss. Dilute to taste if you like.`]] }
 };
-const LABELS = { dose: ['Bean weight', 'g'], grind: ['Grind (064S dial)', ''], out: ['Espresso out', 'g'],
+const LABELS = { hob: ['Hob setting', ' of 9'], dose: ['Bean weight', 'g'], grind: ['Grind (064S dial)', ''], out: ['Espresso out', 'g'],
   water: ['Water', 'g'], ratio: ['Ratio', '1 :'], time: ['Time', ''],
   temp: { espresso: ['Machine temp', '°C'], briki: ['Starting water', '°C'], moka: ['Kettle water', '°C'], _: ['Water temp', '°C'] } };
 const SUGAR = [['Sketos', 'no sugar', 0], ['Metrios', '1 tsp', 1], ['Glykos', '2 tsp', 2]];
@@ -453,6 +457,10 @@ function detail(id) {
             <div class="flow"><b id="lf">0.0</b> g/s<br><span id="lt">scale 0:00</span></div></div>
           <div class="pace" id="pace" hidden><div class="pace-main" id="pace-main"></div><div class="pace-sub mono" id="pace-sub"></div></div>
           <div class="target" id="ltarget"></div>
+          ${b.prep ? `<div class="prep" id="prep">
+            <button class="prep-step" id="prep1"><span class="n">1</span><span class="pt"><b>${b.prep.vessel} on the scale</b><small id="prep1-sub">Tap to tare</small></span></button>
+            <button class="prep-step" id="prep2" disabled><span class="n">2</span><span class="pt"><b>Coffee added</b><small id="prep2-sub">Tap to check the weight and tare</small></span></button>
+            <div class="prep-msg" id="prep-msg" hidden></div></div>` : ''}
           <div class="live-actions"><button class="btn sm" id="arm">${armLabel}</button><button class="btn ghost sm" id="tare">Tare</button></div>
           <div class="result" id="result" hidden><span id="result-txt"></span><button class="btn sm" id="result-save">Save to recipe</button></div>
         </div>
@@ -491,7 +499,7 @@ function detail(id) {
     $('target').textContent = '/ ' + mmss(s.time);
     $('saved-note').textContent = Sync.on ? (Sync.canWrite ? 'Syncs to your gist' : 'Read-only sync: changes stay on this phone') : 'Saved on this phone';
     const out = b.kind === 'espresso' ? `${d.out} g out` : b.kind === 'ratio' ? `1:${d.r}` : `${d.water} g water`;
-    $('set-sum').textContent = [`${d.dose} g`, `dial ${d.grind}`, `${s.temp}°C`, out, mmss(s.time)].join(' · ');
+    $('set-sum').textContent = [`${d.dose} g`, `dial ${d.grind}`, `${s.temp}°C`, s.hob != null ? `hob ${s.hob}` : null, out, mmss(s.time)].filter(Boolean).join(' · ');
     marks(); tick(); live();
     if (save) saveRecipe(id, s);
   };
@@ -642,6 +650,30 @@ function detail(id) {
     try { await Scale.tare(); } catch (e) { toast(e.message); return; }
     setTimeout(() => { arm = true; $('arm').textContent = 'Waiting… tap to cancel'; }, 700);
   };
+  /* Guided tare: vessel, then coffee (weight checked against the recipe), then ready to pour. */
+  const resetPrep = () => {
+    if (!b.prep) return;
+    ['prep1', 'prep2'].forEach(k => $(k).classList.remove('done'));
+    $('prep2').disabled = true; $('prep1-sub').textContent = 'Tap to tare'; $('prep2-sub').textContent = 'Tap to check the weight and tare'; $('prep-msg').hidden = true;
+  };
+  if (b.prep) {
+    $('prep1').onclick = async () => {
+      unlockAudio();
+      try { await Scale.tare(); } catch (e) { toast(e.message); return; }
+      resetPrep(); $('prep1').classList.add('done'); $('prep1-sub').textContent = 'Tared'; $('prep2').disabled = false;
+    };
+    $('prep2').onclick = async () => {
+      const cw = r1(Scale.w), diff = r1(cw - s.dose);
+      try { await Scale.tare(); } catch (e) { toast(e.message); return; }
+      $('prep2').classList.add('done'); $('prep2-sub').textContent = `${cw} g coffee, tared`;
+      const msg = $('prep-msg'); msg.hidden = false;
+      const off = Math.abs(diff) > .3 && cw > .5;
+      msg.innerHTML = (off ? `<p><b>${Math.abs(diff)} g ${diff > 0 ? 'over' : 'under'}</b> the recipe's ${s.dose} g.</p><button class="btn ghost sm" id="prep-use">Use ${cw} g as bean weight</button>` : '')
+        + `<p>${esc(b.prep.after(derive(id, s)))}</p>`;
+      if (off) $('prep-use').onclick = () => { const [mn, mx, st] = b.p.dose; s.dose = r1(clamp(Math.round(cw / st) * st, mn, mx)); setSlider('dose'); paint(); $('prep-use').remove(); msg.querySelector('p').textContent = `Bean weight set to ${s.dose} g.`; };
+      if (b.prep.autoArm) { stopTimer(); timer.elapsed = 0; $('go').textContent = 'Start'; tick(); setTimeout(() => { arm = true; $('arm').textContent = 'Waiting… tap to cancel'; }, 600); }
+    };
+  }
   $('shot-apply').onclick = () => {
     if (!shot) return; s.grind = shot.ng; setSlider('grind'); $('shot').hidden = true; paint(); toast(`Grind set to ${shot.ng.toFixed(1)}. Pull the next shot.`);
   };
@@ -680,7 +712,7 @@ function detail(id) {
 
   const go = $('go');
   go.onclick = () => { unlockAudio(); if (timer.id) { b.kind === 'espresso' ? finish() : pauseTimer(); } else startTimer(); };
-  $('rst').onclick = () => { stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
+  $('rst').onclick = () => { resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
 
   cur = { id, editing: false, applyRemote(rs) {
     if (cur.editing || sameRec(id, rs, s)) return;

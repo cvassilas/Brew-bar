@@ -117,6 +117,17 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .pace[data-state=fast]{border-left-color:var(--crema)} .pace[data-state=fast] .pace-main{color:var(--crema)}
 .target{margin-top:12px;font-size:14px}
 .target .bar{margin-top:6px}
+.prep{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.prep-step{display:flex;align-items:center;gap:12px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent}
+.prep-step:disabled{opacity:.45}
+.prep-step .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;border:1.5px solid var(--crema);color:var(--crema);font-weight:600;font-size:13px}
+.prep-step.done .n{background:var(--ok);border-color:var(--ok);color:var(--surface);font-size:0}
+.prep-step.done .n::before{content:"✓";font-size:14px}
+.prep-step .pt{display:flex;flex-direction:column;min-width:0}
+.prep-step small{color:var(--muted);font-size:12.5px}
+.prep-msg{padding:10px 12px;border-radius:10px;background:var(--crema-soft);font-size:14px}
+.prep-msg p{margin:0 0 6px} .prep-msg p:last-child{margin:0}
+.prep-msg .btn{margin:2px 0 8px}
 .live-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .result{margin-top:12px;padding:12px;border-radius:10px;background:var(--crema-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 
