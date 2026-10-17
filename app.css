@@ -142,6 +142,12 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .fix ul{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:4px}
 .fix li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
 .fix li b{color:var(--crema);font-weight:500}
+.shot{margin-top:14px;padding:14px;border-radius:10px;background:var(--crema-soft)}
+.shot p{margin:0 0 8px}
+.shot ul{list-style:none;margin:0 0 12px;padding:0}
+.shot li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.shot li b{color:var(--crema);font-weight:500}
+.shot-actions{display:flex;gap:8px;flex-wrap:wrap}
 .toast{margin:10px 0 0;font-size:13px;color:var(--steel);font-weight:600}
 .tip{font-size:13px;color:var(--muted);margin-top:14px;line-height:1.55}
 .foot{display:flex;justify-content:space-between;gap:10px;margin-top:18px;flex-wrap:wrap;align-items:center}
