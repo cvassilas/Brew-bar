@@ -308,7 +308,7 @@ const Scale = {
 function renderScalePill() {
   const dot = $('scale-dot'), lab = $('scale-label');
   dot.className = 'dot' + (Scale.connected ? ' on' : Scale.connecting ? ' busy' : '');
-  lab.textContent = Scale.connected ? `Themis${Scale.batt != null ? ' · ' + Scale.batt + '%' : ''}` : Scale.connecting ? 'Connecting…' : 'Connect scale';
+  lab.textContent = Scale.connected ? `Themis${Scale.batt != null ? ' · ' + Scale.batt + '%' : ''}` : Scale.connecting ? 'Connecting…' : 'Scale';
 }
 async function connectScale() {
   try { await Scale.connect(); }
@@ -365,6 +365,21 @@ function applyLook() {
   requestAnimationFrame(() => $('meta-theme').setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#2F4A45'));
 }
 darkMQ.addEventListener?.('change', applyLook);
+const MODE_ICON = {
+  auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>',
+  light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  dark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>' };
+function renderModeBtn() {
+  const m = LS.get('mode', 'auto'), el = $('mode-btn'); if (!el) return;
+  el.innerHTML = MODE_ICON[m]; el.setAttribute('aria-label', `Appearance: ${m}. Tap to change.`); el.title = `Appearance: ${m[0].toUpperCase() + m.slice(1)}`;
+}
+$('mode-btn').onclick = () => {
+  const order = ['auto', 'light', 'dark'], m = order[(order.indexOf(LS.get('mode', 'auto')) + 1) % 3];
+  LS.set('mode', m); applyLook(); renderModeBtn();
+  document.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c.dataset.modeId === m));
+  toast(m === 'auto' ? 'Auto: follows your phone' : m === 'light' ? 'Light mode' : 'Dark mode');
+};
+renderModeBtn();
 applyLook();
 const themePicker = () => { const curT = LS.get('theme', 'portafilter'), curM = LS.get('mode', 'auto');
   return `<section style="margin-top:28px"><h2 class="label">Appearance</h2>
@@ -399,7 +414,7 @@ function home() {
     ${themePicker()}`;
   app.querySelectorAll('[data-theme-id]').forEach(el => el.onclick = () => { LS.set('theme', el.dataset.themeId); applyLook();
     app.querySelectorAll('[data-theme-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
-  app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook();
+  app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook(); renderModeBtn();
     app.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
 }
@@ -682,4 +697,10 @@ renderScalePill();
 Sync.setState(Sync.on ? (Sync.canWrite ? 'on' : 'ro') : 'off');
 route();
 if (Sync.on) Sync.run(false);
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
+  /* When a new version takes over, reload once so the update shows straight away. */
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+});
