@@ -88,6 +88,12 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .weight small{font-size:16px;color:var(--muted)}
 .flow{font-family:var(--f-mono);font-size:14px;color:var(--muted);text-align:right}
 .flow b{color:var(--ink);font-weight:500;font-size:18px}
+.pace{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--crema-soft);border-left:6px solid var(--muted)}
+.pace-main{font-family:var(--f-display);font-weight:800;font-size:26px;line-height:1.1}
+.pace-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.pace[data-state=good]{border-left-color:var(--ok)} .pace[data-state=good] .pace-main{color:var(--ok)}
+.pace[data-state=slow],.pace[data-state=stop]{border-left-color:var(--warn)} .pace[data-state=slow] .pace-main,.pace[data-state=stop] .pace-main{color:var(--warn)}
+.pace[data-state=fast]{border-left-color:var(--crema)} .pace[data-state=fast] .pace-main{color:var(--crema)}
 .target{margin-top:12px;font-size:14px}
 .target .bar{margin-top:6px}
 .live-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}

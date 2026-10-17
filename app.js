@@ -64,6 +64,13 @@ const BREWERS = {
       [r0(s.time * .75), `Foam (kaimaki) rises and the surface starts to crack at the edges.`],
       [s.time, `Just before it boils over, take it off. Spoon the foam into the cup${s.cups > 1 ? 's' : ''} first, then pour slowly.`]] },
   v60: { name: 'V60', gear: 'Hario V60 02 · Timemore 064S', kind: 'ratio', cups: [1, 2, 1],
+    /* Planned pour curve for pace coaching: bloom, then two pours at a steady ~6 g/s from a centred spiral. */
+    pourPlan: s => { const rate = 6, b = r0(s.dose * 2.5), h = r0(s.water * .6);
+      let t = 0, from = 0; const pours = [];
+      for (const [st, to] of [[0, b], [45, h], [75, s.water]]) {
+        const start = pours.length ? Math.max(st, t + 5) : 0, end = start + (to - from) / rate;
+        pours.push({ start, end, from, to }); t = end; from = to; }
+      return { rate, pours }; },
     p: { dose: [10, 30, .5, 15], grind: [0, 16, .1, 5], temp: [85, 100, 1, 94], ratio: [13, 18, .5, 16], time: [150, 270, 5, 210] },
     taste: [['Sour / sharp', 'Under-extracted. Grind finer and brew hotter.', { grind: -.5, temp: 2 }],
       ['Bitter / harsh', 'Over-extracted. Grind coarser and cool the water slightly.', { grind: .5, temp: -2 }],
@@ -331,7 +338,7 @@ function toast(msg) {
 
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0, lock: null };
-let unsubScale = null;
+let unsubScale = null, coachIv = null;
 function pendingEdit() { return !!(cur && cur.editing); }
 function stopTimer() { clearInterval(timer.id); timer.id = null; try { timer.lock && timer.lock.release(); } catch (e) {} timer.lock = null; }
 function onRemoteData() {
@@ -340,7 +347,7 @@ function onRemoteData() {
 }
 
 function home() {
-  stopTimer(); cur = null; if (unsubScale) { unsubScale(); unsubScale = null; }
+  stopTimer(); cur = null; clearInterval(coachIv); if (unsubScale) { unsubScale(); unsubScale = null; }
   const app = $('app');
   app.innerHTML = `<div class="mast"><span class="label">Coffee recipes</span><h1>Brew Bar</h1>
     <p>Six brewers, dialled in for the Timemore 064S. Connect the Themis Ultra for live weight, auto-start and stop-shot alerts.</p></div>
@@ -356,7 +363,7 @@ function home() {
 }
 
 function detail(id) {
-  stopTimer(); timer.elapsed = 0; if (unsubScale) unsubScale();
+  stopTimer(); timer.elapsed = 0; clearInterval(coachIv); if (unsubScale) unsubScale();
   const b = BREWERS[id], s = stateFor(id), app = $('app');
   const tl = k => k === 'temp' ? (LABELS.temp[id] || LABELS.temp._) : LABELS[k];
   const fmt = (k, v) => k === 'time' ? mmss(v) : (k === 'grind' || k === 'ratio') ? v.toFixed(1) : String(r1(v));
@@ -384,6 +391,7 @@ function detail(id) {
         <div class="live" id="live" hidden>
           <div class="live-row"><div class="weight" id="lw">0.0<small> g</small></div>
             <div class="flow"><b id="lf">0.0</b> g/s<br><span id="lt">scale 0:00</span></div></div>
+          <div class="pace" id="pace" hidden><div class="pace-main" id="pace-main"></div><div class="pace-sub mono" id="pace-sub"></div></div>
           <div class="target" id="ltarget"></div>
           <div class="live-actions"><button class="btn sm" id="arm">${armLabel}</button><button class="btn ghost sm" id="tare">Tare</button></div>
           <div class="result" id="result" hidden><span id="result-txt"></span><button class="btn sm" id="result-save">Save to recipe</button></div>
@@ -400,7 +408,7 @@ function detail(id) {
         <p class="tip">${b.tip}</p>
       </section></div>`;
 
-  let steps = [], arm = false, alerted = false, stillSince = 0, result = null, pick = -1;
+  let plan = null, lastPhase = '', steps = [], arm = false, alerted = false, stillSince = 0, result = null, pick = -1;
   const elapsed = () => timer.elapsed + (timer.id ? (Date.now() - timer.start) / 1000 : 0);
   const marks = () => {
     app.querySelectorAll('[data-cups]').forEach(c => c.setAttribute('aria-pressed', +c.dataset.cups === s.cups));
@@ -416,7 +424,7 @@ function detail(id) {
     $('sum').innerHTML = `<div><div class="label">In</div><div class="v">${d.dose} g</div></div>
        <div><div class="label">${third[0]}</div><div class="v">${third[1]}</div></div>
        <div><div class="label">Ratio</div><div class="v">1:${d.r}</div></div>`;
-    steps = b.steps(d);
+    steps = b.steps(d); plan = b.pourPlan ? b.pourPlan(d) : null;
     $('steps').innerHTML = steps.map(([t, txt]) => `<li><span class="t">${mmss(t)}</span><span>${esc(txt)}</span></li>`).join('');
     $('target').textContent = '/ ' + mmss(s.time);
     $('saved-note').textContent = Sync.on ? (Sync.canWrite ? 'Syncs to your gist' : 'Read-only sync: changes stay on this phone') : 'Saved on this phone';
@@ -472,6 +480,7 @@ function detail(id) {
       T.innerHTML = `${b.kind === 'espresso' ? 'Stop at' : 'Pour to'} <b class="mono">${next} g</b> · <span class="mono">${Math.max(0, next - Scale.w).toFixed(1)} g</span> to go<div class="bar"><i style="width:${pct}%"></i></div>`;
     } else T.innerHTML = `Target reached <span class="mono">(${targets[targets.length - 1]} g)</span>`;
 
+    coach();
     if (arm && Scale.w >= (b.kind === 'espresso' ? 0.3 : 2)) { arm = false; $('arm').textContent = armLabel; startTimer(); }
     if (b.kind === 'espresso' && timer.id) {
       if (!alerted && Scale.w >= s.out - 1.5) { alerted = true; beep(3); panel.classList.add('alert'); setTimeout(() => panel.classList.remove('alert'), 2500); }
@@ -482,6 +491,38 @@ function detail(id) {
     }
     tick();
   };
+  /* Pour-pace coaching: compares weight with the planned curve and live flow with the target rate. */
+  const coach = () => {
+    const box = $('pace'); if (!box) return;
+    const running = !!timer.id;
+    if (!plan || !running) { box.hidden = true; lastPhase = ''; return; }
+    const e = elapsed(), w = Scale.w, f = Scale.flow, { rate, pours } = plan;
+    let expected = pours[pours.length - 1].to, i = pours.findIndex(p => e < p.end + 3);
+    for (const p of pours) { if (e < p.start) { expected = p.from; break; } if (e <= p.end) { expected = p.from + (e - p.start) * rate; break; } }
+    let state, main, sub;
+    const p = pours[i];
+    if (i === -1) {
+      state = 'wait'; main = w < pours[pours.length - 1].to - 5 ? `Pour to ${pours[pours.length - 1].to} g` : 'Drawdown · let it drain';
+      sub = `target finish ${mmss(s.time)}`;
+    } else if (e < p.start) {
+      const left = Math.ceil(p.start - e);
+      if (f > 1.5 && w >= p.from - 1) { state = 'slow'; main = 'Stop pouring'; sub = `hold at ${p.from} g`; }
+      else { state = 'wait'; main = `Wait · ${left} s`; sub = `next: pour to ${p.to} g`; }
+    } else if (w >= p.to - 1) {
+      state = 'stop'; main = `Stop · ${p.to} g`; sub = i < pours.length - 1 ? `next pour at ${mmss(pours[i + 1].start)}` : 'let it drain';
+    } else {
+      const diff = w - expected, tol = Math.max(6, p.to * .04);
+      if (diff > tol || f > rate * 1.5) { state = 'slow'; main = 'Slow down'; }
+      else if (diff < -tol && f < rate * 1.1) { state = 'fast'; main = 'Pour faster'; }
+      else { state = 'good'; main = 'Good pace'; }
+      sub = `${f.toFixed(1)} g/s · aim ${rate} · ${p.to} g by ${mmss(p.end)}`;
+    }
+    const phase = i + ':' + (e < (p ? p.start : 0) ? 'w' : 'p');
+    if (lastPhase && phase !== lastPhase && phase.endsWith(':p')) beep(1);
+    lastPhase = phase;
+    box.hidden = false; box.dataset.state = state; $('pace-main').textContent = main; $('pace-sub').textContent = sub;
+  };
+  coachIv = setInterval(() => { if (timer.id && Scale.connected) coach(); }, 500);
   unsubScale = Scale.on(live);
 
   /* controls */
