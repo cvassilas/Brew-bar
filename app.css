@@ -144,4 +144,21 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .row input{flex:1}
 .row .btn{margin-top:6px}
 .end{justify-content:flex-end;flex-wrap:wrap;margin-top:8px}
-@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+/* Scale connect help */
+.how{margin:4px 0 12px;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.how b{font-weight:600}
+.scale-fig{width:100%;max-width:300px;height:auto;align-self:center;margin:2px 0 6px}
+.sf-body{fill:#22262A;stroke:var(--line)}
+.sf-plate{fill:#2C3136}
+.sf-screen{fill:#0F1214}
+.sf-read{font-family:var(--f-mono);font-size:15px;fill:#E8ECE7}
+.sf-btn{fill:#3A4046;stroke:#5A6168;stroke-width:1.5}
+.sf-hot{fill:var(--crema);stroke:var(--crema)}
+.sf-icon{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
+.sf-pulse{fill:none;stroke:var(--crema);stroke-width:3;transform-box:fill-box;transform-origin:center;animation:sfpulse 1.6s ease-out infinite}
+@keyframes sfpulse{0%{opacity:.9;transform:scale(.8)}100%{opacity:0;transform:scale(1.7)}}
+.sf-arrow{fill:none;stroke:var(--crema);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.sf-label{font-family:var(--f-body);font-size:14px;font-weight:600;fill:var(--crema)}
+.skip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-bottom:4px}
+.dlg .skip input{width:auto;margin:0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}.sf-pulse{animation:none}}

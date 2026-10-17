@@ -310,11 +310,24 @@ function renderScalePill() {
   dot.className = 'dot' + (Scale.connected ? ' on' : Scale.connecting ? ' busy' : '');
   lab.textContent = Scale.connected ? `Themis${Scale.batt != null ? ' · ' + Scale.batt + '%' : ''}` : Scale.connecting ? 'Connecting…' : 'Connect scale';
 }
+async function connectScale() {
+  try { await Scale.connect(); }
+  catch (e) { if (e && e.name !== 'NotFoundError') toast(e.message || 'Could not connect to the scale.'); }
+}
 $('scale-btn').onclick = async () => {
   unlockAudio();
   if (Scale.connected) { if (await confirmInline('Disconnect the scale?')) Scale.disconnect(); return; }
-  try { await Scale.connect(); }
-  catch (e) { if (e && e.name !== 'NotFoundError') toast(e.message || 'Could not connect to the scale.'); }
+  if (Scale.connecting) return;
+  if (LS.get('skipScaleHelp', false)) return connectScale();
+  $('scale-skip').checked = false;
+  $('scale-dlg').showModal();
+};
+$('scale-cancel').onclick = () => $('scale-dlg').close();
+/* Opening the Bluetooth chooser straight from this tap keeps the user gesture Chrome requires. */
+$('scale-go').onclick = () => {
+  if ($('scale-skip').checked) LS.set('skipScaleHelp', true);
+  $('scale-dlg').close();
+  connectScale();
 };
 function confirmInline(q) { return Promise.resolve(window.confirm(q)); }
 

@@ -41,6 +41,36 @@
   </form>
 </dialog>
 
+<dialog id="scale-dlg">
+  <form method="dialog" class="dlg">
+    <h2>Connect your scale</h2>
+    <ol class="how">
+      <li><b>Tap Connect</b> below. A Bluetooth list opens.</li>
+      <li><b>Turn on the scale</b> with the <b>left button</b>.</li>
+      <li>Choose <b>BOOKOO</b> from the list and tap Pair.</li>
+    </ol>
+    <svg class="scale-fig" viewBox="0 0 320 240" role="img" aria-label="Diagram of the Themis Ultra from above, with the left button on the front edge highlighted">
+      <rect x="40" y="10" width="240" height="190" rx="22" class="sf-body"/>
+      <rect x="58" y="24" width="204" height="118" rx="12" class="sf-plate"/>
+      <rect x="120" y="156" width="80" height="30" rx="6" class="sf-screen"/>
+      <text x="160" y="177" text-anchor="middle" class="sf-read">0.0 g</text>
+      <circle cx="82" cy="171" r="16" class="sf-pulse"/>
+      <circle cx="82" cy="171" r="11" class="sf-btn sf-hot"/>
+      <circle cx="238" cy="171" r="11" class="sf-btn"/>
+      <path d="M82 164.5 v6 M77.8 167 a6 6 0 1 0 8.4 0" class="sf-icon"/>
+      <path d="M82 218 V 190" class="sf-arrow"/>
+      <path d="M75 197 l7 -8 7 8" class="sf-arrow"/>
+      <text x="96" y="232" class="sf-label">Left button: press to turn on</text>
+    </svg>
+    <p class="small">The display lights up when the scale is on. If BOOKOO doesn't appear, wait a few seconds with the list open.</p>
+    <label class="skip"><input type="checkbox" id="scale-skip"> Don't show this again</label>
+    <div class="row end">
+      <button type="button" class="btn ghost" id="scale-cancel">Cancel</button>
+      <button type="button" class="btn" id="scale-go">Connect</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="app.js"></script>
 </body>
 </html>
