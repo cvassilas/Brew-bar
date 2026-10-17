@@ -420,8 +420,11 @@ function detail(id) {
 
   app.innerHTML = `<div class="head">${ICON[id]}<div><h1>${b.name}</h1><div class="gear">${b.gear}</div></div></div>
     <div class="grid">
-      <section class="panel"><div class="dials">${cupsUI}${dials}${sugarUI}</div>
-        <div class="foot"><span class="hint" id="saved-note"></span><button class="btn ghost sm" id="reset">Reset to defaults</button></div></section>
+      <section class="panel settings">
+        <button class="set-head" id="set-toggle" aria-expanded="true" aria-controls="set-body">
+          <span class="label">Settings</span><span class="set-sum mono" id="set-sum"></span><span class="chev" aria-hidden="true"></span></button>
+        <div id="set-body"><div class="dials">${cupsUI}${dials}${sugarUI}</div>
+        <div class="foot"><span class="hint" id="saved-note"></span><button class="btn ghost sm" id="reset">Reset to defaults</button></div></div></section>
       <section class="panel">
         <div class="live" id="live" hidden>
           <div class="live-row"><div class="weight" id="lw">0.0<small> g</small></div>
@@ -463,6 +466,8 @@ function detail(id) {
     $('steps').innerHTML = steps.map(([t, txt]) => `<li><span class="t">${mmss(t)}</span><span>${esc(txt)}</span></li>`).join('');
     $('target').textContent = '/ ' + mmss(s.time);
     $('saved-note').textContent = Sync.on ? (Sync.canWrite ? 'Syncs to your gist' : 'Read-only sync: changes stay on this phone') : 'Saved on this phone';
+    const out = b.kind === 'espresso' ? `${d.out} g out` : b.kind === 'ratio' ? `1:${d.r}` : `${d.water} g water`;
+    $('set-sum').textContent = [`${d.dose} g`, `dial ${d.grind}`, `${s.temp}°C`, out, mmss(s.time)].join(' · ');
     marks(); tick(); live();
     if (save) saveRecipe(id, s);
   };
@@ -611,6 +616,10 @@ function detail(id) {
     pick = -1; app.querySelectorAll('[data-taste]').forEach(c => c.setAttribute('aria-pressed', 'false')); showFix(); paint();
     const t = $('applied'); t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 2200);
   };
+
+  const setCollapsed = c => { $('set-body').hidden = c; $('set-toggle').setAttribute('aria-expanded', String(!c)); };
+  setCollapsed(!!LS.get('collapsed', false));
+  $('set-toggle').onclick = () => { const c = !$('set-body').hidden; setCollapsed(c); LS.set('collapsed', c); };
 
   const go = $('go');
   go.onclick = () => { unlockAudio(); if (timer.id) { b.kind === 'espresso' ? finish() : pauseTimer(); } else startTimer(); };
