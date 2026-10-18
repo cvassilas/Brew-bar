@@ -431,7 +431,8 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 Awake.ensure();
 
 /* ---------- Share ---------- */
-const APP_URL = 'https://cvassilas.github.io/brew-bar/';
+/* The address this copy is served from (GitHub Pages paths are case-sensitive: /Brew-bar/). */
+const APP_URL = location.protocol.startsWith('http') && !/localhost|127\.0\.0\.1/.test(location.hostname) ? new URL('./', location.href).href : 'https://cvassilas.github.io/Brew-bar/';
 let shareMode = 'app';
 const shareUrl = () => shareMode === 'gist' && Sync.cfg.gistId ? `${APP_URL}?gist=${Sync.cfg.gistId}` : APP_URL;
 function renderShare() {
