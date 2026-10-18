@@ -43,6 +43,21 @@
   </form>
 </dialog>
 
+<dialog id="share-dlg">
+  <form method="dialog" class="dlg share">
+    <h2>Share Brew Bar</h2>
+    <p class="muted">Scan with a phone camera to open the app.</p>
+    <div class="qr-wrap"><img src="icons/qr.svg" alt="QR code linking to cvassilas.github.io/brew-bar" width="232" height="232"></div>
+    <p class="mono share-url" id="share-url">cvassilas.github.io/brew-bar</p>
+    <p class="small">They get the app with its default recipes. Your own settings only appear on their phone if you give them your sync gist ID.</p>
+    <div class="row end">
+      <button type="button" class="btn ghost" id="share-close">Close</button>
+      <button type="button" class="btn ghost" id="share-copy">Copy link</button>
+      <button type="button" class="btn" id="share-send" hidden>Send link</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="scale-dlg">
   <form method="dialog" class="dlg">
     <h2>Connect your scale</h2>

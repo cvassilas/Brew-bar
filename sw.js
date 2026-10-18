@@ -1,8 +1,8 @@
 /* Brew Bar service worker.
    App files: network first (bypassing the HTTP cache) so updates show on the next open; cached copy when offline.
    Fonts: cache first. GitHub API: never touched. */
-const VERSION = 'brewbar-v13';
-const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
+const VERSION = 'brewbar-v14';
+const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/qr.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });

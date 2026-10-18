@@ -425,6 +425,21 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => Awake.ensure(), { passive: true }));
 Awake.ensure();
 
+/* ---------- Share ---------- */
+const APP_URL = 'https://cvassilas.github.io/brew-bar/';
+function openShare() {
+  $('share-send').hidden = !navigator.share;
+  $('share-dlg').showModal();
+}
+$('share-close').onclick = () => $('share-dlg').close();
+$('share-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(APP_URL); toast('Link copied.'); }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($('share-url')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Link selected. Copy it from the menu.'); }
+};
+$('share-send').onclick = async () => {
+  try { await navigator.share({ title: 'Brew Bar', text: 'Coffee recipes with live scale support', url: APP_URL }); } catch (e) {}
+};
+
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0 };
 let unsubScale = null, coachIv = null;
@@ -448,7 +463,10 @@ function home() {
     </div>
     <p class="note">${Sync.on ? 'Settings sync through your GitHub gist.' : 'Settings are saved on this phone. Tap “Sync off” to share them across phones.'}
       Grind numbers assume a zero point calibrated to burr touch; if your espresso sits nearer 2.0 or 2.5, shift every brewer by the same amount.</p>
-    ${themePicker()}`;
+    ${themePicker()}
+    <section style="margin-top:28px"><h2 class="label">Share</h2>
+      <button class="theme-opt share-opt" id="open-share"><span class="qr-mini" aria-hidden="true"></span><span class="pt"><b>Share Brew Bar</b><span>Show a QR code or send the link</span></span></button></section>`;
+  $('open-share').onclick = openShare;
   app.querySelectorAll('[data-theme-id]').forEach(el => el.onclick = () => { LS.set('theme', el.dataset.themeId); applyLook();
     app.querySelectorAll('[data-theme-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook(); renderModeBtn();
