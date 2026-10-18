@@ -75,7 +75,7 @@ const BREWERS = {
         const start = pours.length ? Math.max(st, t + 5) : 0, end = start + (to - from) / rate;
         pours.push({ start, end, from, to }); t = end; from = to; }
       return { rate, pours }; },
-    p: { dose: [10, 30, .5, 15], grind: [0, 16, .1, 5], temp: [85, 100, 1, 94], ratio: [13, 18, .5, 16], time: [150, 270, 5, 210] },
+    p: { dose: [10, 40, .5, 15], grind: [0, 16, .1, 5], temp: [85, 100, 1, 94], ratio: [13, 18, .5, 16], time: [150, 270, 5, 210] },
     taste: [['Sour / sharp', 'Under-extracted. Grind finer and brew hotter.', { grind: -.5, temp: 2 }],
       ['Bitter / harsh', 'Over-extracted. Grind coarser and cool the water slightly.', { grind: .5, temp: -2 }],
       ['Weak / watery', 'Tighten the ratio for a stronger cup.', { ratio: -1 }],
