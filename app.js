@@ -392,11 +392,27 @@ const themePicker = () => { const curT = LS.get('theme', 'portafilter'), curM = 
     `<button class="theme-opt" data-theme-id="${id}" aria-pressed="${id === curT}"><span class="sw">${sw.map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${name}</b><span>${desc}</span></button>`).join('')}</div>
     <p class="small">Auto follows your phone's light and dark setting.</p></section>`; };
 
+/* ---------- Keep the screen on while the app is open ----------
+   The browser drops the lock whenever the app is hidden, so it is re-requested on return and on any tap. */
+const Awake = {
+  lock: null, supported: 'wakeLock' in navigator,
+  async ensure() {
+    if (!this.supported || this.lock || document.visibilityState !== 'visible') return;
+    try {
+      this.lock = await navigator.wakeLock.request('screen');
+      this.lock.addEventListener('release', () => { this.lock = null; });
+    } catch (e) { this.lock = null; }
+  }
+};
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Awake.ensure(); });
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => Awake.ensure(), { passive: true }));
+Awake.ensure();
+
 /* ---------- Views ---------- */
-let cur = null, timer = { id: null, start: 0, elapsed: 0, lock: null };
+let cur = null, timer = { id: null, start: 0, elapsed: 0 };
 let unsubScale = null, coachIv = null;
 function pendingEdit() { return !!(cur && cur.editing); }
-function stopTimer() { clearInterval(timer.id); timer.id = null; try { timer.lock && timer.lock.release(); } catch (e) {} timer.lock = null; }
+function stopTimer() { clearInterval(timer.id); timer.id = null; }
 function onRemoteData() {
   if (cur) { const s = stateFor(cur.id); cur.applyRemote(s); }
   else home();
@@ -518,7 +534,7 @@ function detail(id) {
     if (timer.id) return;
     timer.start = Date.now(); timer.id = setInterval(tick, 200); $('go').textContent = 'Pause';
     result = null; $('result').hidden = true; $('shot').hidden = true; alerted = false; stillSince = 0;
-    try { timer.lock = await navigator.wakeLock?.request('screen'); } catch (e) {}
+    Awake.ensure();
   };
   const pauseTimer = () => { timer.elapsed = elapsed(); stopTimer(); $('go').textContent = 'Resume'; tick(); };
   /* Espresso: compare the shot time with the target (scaled to the yield actually reached) and suggest a grind change.
