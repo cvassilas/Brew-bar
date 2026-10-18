@@ -46,14 +46,30 @@
 <dialog id="share-dlg">
   <form method="dialog" class="dlg share">
     <h2>Share Brew Bar</h2>
-    <p class="muted">Scan with a phone camera to open the app.</p>
-    <div class="qr-wrap"><img src="icons/qr.svg" alt="QR code linking to cvassilas.github.io/brew-bar" width="232" height="232"></div>
-    <p class="mono share-url" id="share-url">cvassilas.github.io/brew-bar</p>
-    <p class="small">They get the app with its default recipes. Your own settings only appear on their phone if you give them your sync gist ID.</p>
+    <div class="modes share-modes" id="share-modes" role="group" aria-label="What to share" hidden>
+      <button type="button" class="mode-opt" data-share="app">App only</button>
+      <button type="button" class="mode-opt" data-share="gist">App + my recipes</button>
+    </div>
+    <p class="muted">Scan with a phone camera to open it.</p>
+    <div class="qr-wrap" id="share-qr" role="img"></div>
+    <p class="mono share-url" id="share-url">cvassilas.github.io/brew-bar/</p>
+    <p class="small" id="share-note"></p>
     <div class="row end">
       <button type="button" class="btn ghost" id="share-close">Close</button>
       <button type="button" class="btn ghost" id="share-copy">Copy link</button>
       <button type="button" class="btn" id="share-send" hidden>Send link</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="follow-dlg">
+  <form method="dialog" class="dlg">
+    <h2>Use these shared recipes?</h2>
+    <p>Someone has shared their Brew Bar recipes with you. Their settings replace the ones on this phone, and update when they change them.</p>
+    <p class="small" id="follow-replace" hidden>This phone already syncs with another gist. Following this one stops that.</p>
+    <div class="row end">
+      <button type="button" class="btn ghost" id="follow-no">Not now</button>
+      <button type="button" class="btn" id="follow-yes">Use recipes</button>
     </div>
   </form>
 </dialog>
@@ -88,6 +104,7 @@
   </form>
 </dialog>
 
+<script src="vendor/qrcode.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

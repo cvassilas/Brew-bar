@@ -237,7 +237,12 @@ const Sync = {
       : st === 'ro' ? 'Synced (read only)' : 'Synced';
   }
 };
-setInterval(() => { if (Sync.on && document.visibilityState === 'visible' && !pendingEdit()) Sync.run(false); }, 45000);
+let syncTick = 0;
+setInterval(() => {
+  syncTick++;
+  if (!Sync.canWrite && syncTick % 4) return;   /* without a token, check every 3 min to stay inside GitHub's limit */
+  if (Sync.on && document.visibilityState === 'visible' && !pendingEdit()) Sync.run(false);
+}, 45000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Sync.on) Sync.run(false); });
 
 function openSync() {
@@ -427,18 +432,56 @@ Awake.ensure();
 
 /* ---------- Share ---------- */
 const APP_URL = 'https://cvassilas.github.io/brew-bar/';
+let shareMode = 'app';
+const shareUrl = () => shareMode === 'gist' && Sync.cfg.gistId ? `${APP_URL}?gist=${Sync.cfg.gistId}` : APP_URL;
+function renderShare() {
+  const url = shareUrl(), withGist = url !== APP_URL;
+  let svg = '';
+  try { const q = qrcode(0, 'M'); q.addData(url); q.make(); svg = q.createSvgTag({ cellSize: 4, margin: 3, scalable: true }); } catch (e) {}
+  $('share-qr').innerHTML = svg || `<img src="icons/qr.svg" alt="">`;
+  $('share-qr').setAttribute('aria-label', `QR code linking to ${url}`);
+  $('share-url').textContent = url.replace('https://', '');
+  $('share-note').textContent = withGist
+    ? 'Opens Brew Bar with your recipes, and keeps them updated when you change them. They can view them but not edit them: only phones with your GitHub token can, and that token can edit all your gists, so keep it to your own phones.'
+    : 'They get the app with its default recipes.';
+  document.querySelectorAll('[data-share]').forEach(b => b.setAttribute('aria-pressed', b.dataset.share === shareMode));
+}
 function openShare() {
   $('share-send').hidden = !navigator.share;
+  $('share-modes').hidden = !Sync.cfg.gistId;
+  if (!Sync.cfg.gistId) shareMode = 'app';
+  renderShare();
   $('share-dlg').showModal();
 }
+document.querySelectorAll('[data-share]').forEach(b => b.onclick = () => { shareMode = b.dataset.share; renderShare(); });
 $('share-close').onclick = () => $('share-dlg').close();
 $('share-copy').onclick = async () => {
-  try { await navigator.clipboard.writeText(APP_URL); toast('Link copied.'); }
+  try { await navigator.clipboard.writeText(shareUrl()); toast('Link copied.'); }
   catch (e) { const r = document.createRange(); r.selectNodeContents($('share-url')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Link selected. Copy it from the menu.'); }
 };
 $('share-send').onclick = async () => {
-  try { await navigator.share({ title: 'Brew Bar', text: 'Coffee recipes with live scale support', url: APP_URL }); } catch (e) {}
+  const gist = shareUrl() !== APP_URL;
+  try { await navigator.share({ title: 'Brew Bar', text: gist ? 'My coffee recipes in Brew Bar' : 'Coffee recipes with live scale support', url: shareUrl() }); } catch (e) {}
 };
+
+/* Opening a shared link (?gist=…) offers to follow those recipes. */
+function checkSharedGist() {
+  const id = (new URLSearchParams(location.search).get('gist') || '').replace(/[^0-9a-f]/gi, '');
+  const clean = () => history.replaceState(null, '', location.pathname + location.hash);
+  if (!id) return;
+  if (id === Sync.cfg.gistId) { clean(); return; }
+  $('follow-replace').hidden = !Sync.cfg.gistId;
+  $('follow-dlg').showModal();
+  $('follow-no').onclick = () => { clean(); $('follow-dlg').close(); };
+  $('follow-yes').onclick = async () => {
+    clean(); $('follow-dlg').close();
+    Sync.cfg = { token: '', gistId: id }; LS.set('sync', Sync.cfg);
+    DATA = { recipes: {} }; LS.set('data', DATA);
+    await Sync.run(false);
+    onRemoteData();
+    toast(Sync.state === 'err' ? Sync.msg : 'Following the shared recipes.');
+  };
+}
 
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0 };
@@ -785,6 +828,7 @@ renderScalePill();
 Sync.setState(Sync.on ? (Sync.canWrite ? 'on' : 'ro') : 'off');
 route();
 if (Sync.on) Sync.run(false);
+checkSharedGist();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});

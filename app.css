@@ -222,7 +222,10 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .theme-opt span{font-size:12px;color:var(--muted)}
 .share{align-items:stretch}
 .qr-wrap{align-self:center;background:#FFFFFF;border-radius:16px;padding:10px;margin:4px 0 12px;line-height:0}
-.qr-wrap img{width:min(232px,60vw);height:auto;display:block}
+.qr-wrap img,.qr-wrap svg{width:min(232px,60vw);height:auto;display:block}
+.qr-wrap svg rect[fill="white"],.qr-wrap svg path{shape-rendering:crispEdges}
+.share-modes{align-self:flex-start;margin:0 0 12px}
+.share-url{word-break:break-all;text-align:center}
 .share-url{align-self:center;margin:0 0 6px;font-size:14px;user-select:all}
 .share-opt{flex-direction:row;align-items:center;gap:14px;width:100%}
 .share-opt .pt{display:flex;flex-direction:column;gap:2px}
