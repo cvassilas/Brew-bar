@@ -75,7 +75,7 @@ const BREWERS = {
         const start = pours.length ? Math.max(st, t + 5) : 0, end = start + (to - from) / rate;
         pours.push({ start, end, from, to }); t = end; from = to; }
       return { rate, pours }; },
-    p: { dose: [10, 40, .5, 15], grind: [0, 16, .1, 5], temp: [85, 100, 1, 94], ratio: [13, 18, .5, 16], time: [150, 270, 5, 210] },
+    p: { dose: [10, 40, .1, 15], water: [150, 720, 5, 240], ratio: [13, 18, .1, 16], grind: [0, 16, .1, 5], temp: [85, 100, 1, 94], time: [150, 270, 5, 210] },
     taste: [['Sour / sharp', 'Under-extracted. Grind finer and brew hotter.', { grind: -.5, temp: 2 }],
       ['Bitter / harsh', 'Over-extracted. Grind coarser and cool the water slightly.', { grind: .5, temp: -2 }],
       ['Weak / watery', 'Tighten the ratio for a stronger cup.', { ratio: -1 }],
@@ -90,7 +90,7 @@ const BREWERS = {
       [75, `Pour to ${s.water} g. Give a gentle swirl to flatten the bed.`, s.water],
       [s.time, `Drawdown finished around ${mmss(s.time)}.`]]; } },
   cafetiere: { name: 'Cafetière', gear: 'French press · Timemore 064S', kind: 'ratio', cups: [1, 4, 2],
-    p: { dose: [15, 60, 1, 30], grind: [0, 16, .1, 12], temp: [88, 100, 1, 96], ratio: [12, 18, .5, 16], time: [240, 600, 15, 480] },
+    p: { dose: [15, 60, .5, 30], water: [200, 1000, 10, 480], ratio: [12, 18, .1, 16], grind: [0, 16, .1, 12], temp: [88, 100, 1, 96], time: [240, 600, 15, 480] },
     taste: [['Sour / thin', 'Grind finer and give it longer.', { grind: -.5, time: 60 }],
       ['Bitter / harsh', 'Grind coarser.', { grind: .5 }],
       ['Muddy / silty', 'Coarser grind and pour more slowly at the end.', { grind: .7 }],
@@ -103,7 +103,7 @@ const BREWERS = {
       [240, `Break the crust, stir gently and skim off the foam and floating bits.`],
       [s.time, `Press the plunger just to the surface and pour slowly.`]] },
   aeropress: { name: 'AeroPress', gear: 'Inverted or standard · Timemore 064S', kind: 'ratio',
-    p: { dose: [11, 20, .5, 15], grind: [0, 16, .1, 5.5], temp: [80, 100, 1, 92], ratio: [11, 17, .5, 15], time: [90, 240, 5, 150] },
+    p: { dose: [11, 20, .1, 15], water: [100, 300, 5, 225], ratio: [11, 17, .1, 15], grind: [0, 16, .1, 5.5], temp: [80, 100, 1, 92], time: [90, 240, 5, 150] },
     taste: [['Sour / sharp', 'Grind finer, hotter water, steep a little longer.', { grind: -.5, temp: 2, time: 15 }],
       ['Bitter / harsh', 'Grind coarser, cooler water, shorter steep.', { grind: .5, temp: -3, time: -15 }],
       ['Weak', 'Tighten the ratio.', { ratio: -1 }],
@@ -132,11 +132,28 @@ const LS = {
 let DATA = LS.get('data', { recipes: {} });
 if (!DATA.recipes) DATA = { recipes: {} };
 
+/* Linked dose / water / ratio for ratio brewers: water is the anchor (how much coffee you want).
+   Bean weight -> keeps water, ratio follows. Water or ratio -> bean weight follows. */
+function snapP(b, k, v) { const [mn, mx, st] = b.p[k]; return r1(clamp(Math.round(v / st) * st, mn, mx)); }
+function setLinked(b, t, k, v) {
+  t[k] = snapP(b, k, v);
+  if (b.kind !== 'ratio' || !['dose', 'water', 'ratio'].includes(k)) return;
+  const tol = b.p.water[2];
+  if (k === 'dose') {
+    t.ratio = snapP(b, 'ratio', t.water / t.dose);
+    if (Math.abs(t.dose * t.ratio - t.water) > tol) t.water = snapP(b, 'water', t.dose * t.ratio);
+  } else {
+    t.dose = snapP(b, 'dose', t.water / t.ratio);
+    /* Bean weight hit its limit: keep the strength (ratio) and cap the water instead. */
+    if (Math.abs(t.dose * t.ratio - t.water) > tol) t.water = snapP(b, 'water', t.dose * t.ratio);
+  }
+}
 function stateFor(id) {
   const b = BREWERS[id], saved = DATA.recipes[id] || {}, s = {};
   for (const k in b.p) { const [mn, mx, , d] = b.p[k]; const v = saved[k]; s[k] = (typeof v === 'number' && v >= mn && v <= mx) ? v : d; }
   if (b.sugar) s.sugar = typeof saved.sugar === 'number' ? saved.sugar : 1;
   if (b.cups) { const [mn, mx, d] = b.cups; s.cups = (typeof saved.cups === 'number' && saved.cups >= mn && saved.cups <= mx) ? saved.cups : d; }
+  if (b.kind === 'ratio' && typeof saved.water !== 'number') s.water = snapP(b, 'water', s.dose * s.ratio);
   return s;
 }
 function saveRecipe(id, s) {
@@ -147,7 +164,7 @@ function saveRecipe(id, s) {
 function derive(id, s) {
   const b = BREWERS[id], d = { ...s };
   d.dose = r1(s.dose); d.grind = s.grind.toFixed(1);
-  if (b.kind === 'ratio') { d.water = r0(s.dose * s.ratio); d.r = s.ratio; }
+  if (b.kind === 'ratio') { d.water = r0(s.water); d.r = r1(s.water / s.dose); }
   if (b.kind === 'water') d.r = r1(s.water / s.dose);
   if (b.kind === 'espresso') d.r = r1(s.out / s.dose);
   if (b.sugar) d.sugarTxt = s.sugar ? ` with ${s.sugar * (s.cups || 1)} tsp sugar` : '';
@@ -451,6 +468,8 @@ function detail(id) {
       <input type="range" id="r-${k}" data-k="${k}" min="${mn}" max="${mx}" step="${st}" value="${s[k]}">
       <div class="ticks"><span>${fmt(k, mn)}</span><span>${fmt(k, mx)}</span></div>
       ${k === 'grind' ? `<div class="hint" id="h-grind"></div>` : ''}
+      ${k === 'water' && b.kind === 'ratio' ? `<div class="hint" id="h-water"></div>` : ''}
+      ${k === 'ratio' ? `<p class="small" style="margin-bottom:0">Bean weight keeps the water and changes the ratio. Water or ratio changes the bean weight.</p>` : ''}
       ${k === 'dose' ? `<button class="linkbtn scale-only" id="use-dose" hidden>Use scale reading as bean weight</button>` : ''}
       ${k === 'water' ? `<button class="linkbtn scale-only" id="use-water" hidden>Use scale reading as water</button>` : ''}</div>`; }).join('');
   const cupWord = n => id === 'cafetiere' ? (n > 1 ? 'cups' : 'cup') : (n > 1 ? 'people' : 'person');
@@ -504,6 +523,8 @@ function detail(id) {
 
   const paint = (save = true) => {
     const d = derive(id, s);
+    for (const k in b.p) setSlider(k);
+    if ($('h-water')) $('h-water').textContent = `≈ ${Math.max(0, r0(d.water - 2 * d.dose))} ml in the cup`;
     for (const k in b.p) { const [mn, mx] = b.p[k]; $('r-' + k).style.setProperty('--p', ((s[k] - mn) / (mx - mn) * 100) + '%'); $('v-' + k).innerHTML = valHtml(k); }
     $('h-grind').textContent = `≈ ${microns(s.grind)} µm`;
     const third = b.kind === 'espresso' ? ['Out', `${d.out} g`] : ['Water', `${d.water} g`];
@@ -514,7 +535,7 @@ function detail(id) {
     $('steps').innerHTML = steps.map(([t, txt]) => `<li><span class="t">${mmss(t)}</span><span>${esc(txt)}</span></li>`).join('');
     $('target').textContent = '/ ' + mmss(s.time);
     $('saved-note').textContent = Sync.on ? (Sync.canWrite ? 'Syncs to your gist' : 'Read-only sync: changes stay on this phone') : 'Saved on this phone';
-    const out = b.kind === 'espresso' ? `${d.out} g out` : b.kind === 'ratio' ? `1:${d.r}` : `${d.water} g water`;
+    const out = b.kind === 'espresso' ? `${d.out} g out` : b.kind === 'ratio' ? `${d.water} g · 1:${d.r}` : `${d.water} g water`;
     $('set-sum').textContent = [`${d.dose} g`, `dial ${d.grind}`, `${s.temp}°C`, s.hob != null ? `hob ${s.hob}` : null, out, mmss(s.time)].filter(Boolean).join(' · ');
     marks(); tick(); live();
     if (save) saveRecipe(id, s);
@@ -639,22 +660,22 @@ function detail(id) {
 
   /* controls */
   app.querySelectorAll('input[type=range]').forEach(el => {
-    el.oninput = () => { s[el.dataset.k] = parseFloat(el.value); cur.editing = true; clearTimeout(cur._e); cur._e = setTimeout(() => cur && (cur.editing = false), 2500); paint(); showFix(); };
+    el.oninput = () => { setLinked(b, s, el.dataset.k, parseFloat(el.value)); cur.editing = true; clearTimeout(cur._e); cur._e = setTimeout(() => cur && (cur.editing = false), 2500); paint(); showFix(); };
   });
   app.querySelectorAll('[data-step]').forEach(el => el.onclick = () => {
-    const k = el.dataset.sk, [mn, mx, st] = b.p[k];
-    s[k] = r1(clamp(Math.round((s[k] + (+el.dataset.step) * st) / st) * st, mn, mx)); setSlider(k);
+    const k = el.dataset.sk, st = b.p[k][2];
+    setLinked(b, s, k, s[k] + (+el.dataset.step) * st);
     cur.editing = true; clearTimeout(cur._e); cur._e = setTimeout(() => cur && (cur.editing = false), 2500); paint(); showFix();
   });
   app.querySelectorAll('[data-sugar]').forEach(el => el.onclick = () => { s.sugar = +el.dataset.sugar; paint(); });
   app.querySelectorAll('[data-cups]').forEach(el => el.onclick = () => {
     const n = +el.dataset.cups; if (n === s.cups) return; const f = n / s.cups;
-    const scale = k => { if (!b.p[k]) return; const [mn, mx, st] = b.p[k]; s[k] = r1(clamp(Math.round(s[k] * f / st) * st, mn, mx)); setSlider(k); };
-    scale('dose'); if (b.kind === 'water') scale('water');
+    if (b.kind === 'ratio') setLinked(b, s, 'water', s.water * f);
+    else { setLinked(b, s, 'dose', s.dose * f); if (b.p.water) setLinked(b, s, 'water', s.water * f); }
     s.cups = n; paint(); showFix();
   });
   $('reset').onclick = () => { for (const k in b.p) { s[k] = b.p[k][3]; setSlider(k); } if (b.cups) s.cups = b.cups[2]; if (b.sugar) s.sugar = 1; paint(); showFix(); };
-  const useScale = k => { const [mn, mx, st] = b.p[k]; s[k] = r1(clamp(Math.round(Scale.w / st) * st, mn, mx)); setSlider(k); paint(); };
+  const useScale = k => { setLinked(b, s, k, Scale.w); paint(); };
   $('use-dose').onclick = () => useScale('dose');
   if ($('use-water')) $('use-water').onclick = () => useScale('water');
 
@@ -686,7 +707,7 @@ function detail(id) {
       const off = Math.abs(diff) > .3 && cw > .5;
       msg.innerHTML = (off ? `<p><b>${Math.abs(diff)} g ${diff > 0 ? 'over' : 'under'}</b> the recipe's ${s.dose} g.</p><button class="btn ghost sm" id="prep-use">Use ${cw} g as bean weight</button>` : '')
         + `<p>${esc(b.prep.after(derive(id, s)))}</p>`;
-      if (off) $('prep-use').onclick = () => { const [mn, mx, st] = b.p.dose; s.dose = r1(clamp(Math.round(cw / st) * st, mn, mx)); setSlider('dose'); paint(); $('prep-use').remove(); msg.querySelector('p').textContent = `Bean weight set to ${s.dose} g.`; };
+      if (off) $('prep-use').onclick = () => { setLinked(b, s, 'dose', cw); paint(); $('prep-use').remove(); msg.querySelector('p').textContent = `Bean weight set to ${s.dose} g.`; };
       if (b.prep.autoArm) { stopTimer(); timer.elapsed = 0; $('go').textContent = 'Start'; tick(); setTimeout(() => { arm = true; $('arm').textContent = 'Waiting… tap to cancel'; }, 600); }
     };
   }
@@ -709,15 +730,16 @@ function detail(id) {
   const showFix = () => {
     const box = $('fix'); if (pick < 0) { box.hidden = true; return; }
     const [, txt, ch] = b.taste[pick]; box.hidden = false; $('fix-txt').textContent = txt;
-    $('fix-list').innerHTML = Object.entries(ch).map(([k, dv]) => { const [mn, mx] = b.p[k]; const nv = r1(clamp(s[k] + dv, mn, mx));
-      return `<li><span>${tl(k)[0]}</span><span class="mono">${fmt(k, s[k])} → <b>${fmt(k, nv)}</b></span></li>`; }).join('');
+    const t = { ...s }; for (const [k, dv] of Object.entries(ch)) setLinked(b, t, k, t[k] + dv);
+    $('fix-list').innerHTML = Object.keys(b.p).filter(k => t[k] !== s[k]).map(k =>
+      `<li><span>${tl(k)[0]}</span><span class="mono">${fmt(k, s[k])} → <b>${fmt(k, t[k])}</b></span></li>`).join('');
   };
   app.querySelectorAll('[data-taste]').forEach(el => el.onclick = () => {
     pick = pick === +el.dataset.taste ? -1 : +el.dataset.taste;
     app.querySelectorAll('[data-taste]').forEach(c => c.setAttribute('aria-pressed', +c.dataset.taste === pick)); showFix();
   });
   $('apply').onclick = () => {
-    for (const [k, dv] of Object.entries(b.taste[pick][2])) { const [mn, mx] = b.p[k]; s[k] = r1(clamp(s[k] + dv, mn, mx)); setSlider(k); }
+    for (const [k, dv] of Object.entries(b.taste[pick][2])) setLinked(b, s, k, s[k] + dv);
     pick = -1; app.querySelectorAll('[data-taste]').forEach(c => c.setAttribute('aria-pressed', 'false')); showFix(); paint();
     const t = $('applied'); t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 2200);
   };
