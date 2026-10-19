@@ -22,7 +22,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
    Grind = Timemore Sculptor 064S dial (0–16, stepless). Steps: [seconds, text, targetWeight?] */
 const BREWERS = {
   espresso: { name: 'Espresso', gear: 'Ascaso Uno PID · Timemore 064S', kind: 'espresso',
-    p: { dose: [14, 22, .1, 18], grind: [0, 16, .1, 2.2], temp: [86, 96, 1, 93], out: [20, 60, .5, 38], time: [15, 45, 1, 28] },
+    p: { dose: [14, 22, .1, 18], grind: [0, 16, .1, 2.2], second: [0, 1, .1, .2], temp: [86, 96, 1, 93], out: [20, 60, .5, 38], time: [15, 45, 1, 28] },
     taste: [['Sour / salty', 'Under-extracted. Grind finer to slow the shot, and nudge the temperature up.', { grind: -.2, temp: 1 }],
       ['Bitter / burnt', 'Over-extracted. Grind coarser and drop the temperature a degree.', { grind: .2, temp: -1 }],
       ['Thin / watery', 'Too much water for the dose. Pull a shorter, more concentrated shot.', { out: -4 }],
@@ -117,7 +117,7 @@ const BREWERS = {
       [Math.max(10, s.time - 30), `Swirl gently, then press slowly for about 30 s.`],
       [s.time, `Stop at the hiss. Dilute to taste if you like.`]] }
 };
-const LABELS = { hob: ['Hob setting', ' of 9'], dose: ['Bean weight', 'g'], grind: ['Grind (064S dial)', ''], out: ['Espresso out', 'g'],
+const LABELS = { second: ['Second shot: coarser by', ''], hob: ['Hob setting', ' of 9'], dose: ['Bean weight', 'g'], grind: ['Grind (064S dial)', ''], out: ['Espresso out', 'g'],
   water: ['Water', 'g'], ratio: ['Ratio', '1 :'], time: ['Time', ''],
   temp: { espresso: ['Machine temp', '°C'], briki: ['Starting water', '°C'], moka: ['Kettle water', '°C'], _: ['Water temp', '°C'] } };
 const SUGAR = [['Sketos', 'no sugar', 0], ['Metrios', '1 tsp', 1], ['Glykos', '2 tsp', 2]];
@@ -486,6 +486,8 @@ function checkSharedGist() {
 
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0 };
+/* Espresso session: which shot this is (the 2nd and later run slower, so they grind coarser). Resets after 20 min idle. */
+const shotSession = { n: 1, last: 0 };
 let unsubScale = null, coachIv = null;
 function pendingEdit() { return !!(cur && cur.editing); }
 function stopTimer() { clearInterval(timer.id); timer.id = null; }
@@ -522,7 +524,7 @@ function detail(id) {
   stopTimer(); timer.elapsed = 0; clearInterval(coachIv); if (unsubScale) unsubScale();
   const b = BREWERS[id], s = stateFor(id), app = $('app');
   const tl = k => k === 'temp' ? (LABELS.temp[id] || LABELS.temp._) : LABELS[k];
-  const fmt = (k, v) => k === 'time' ? mmss(v) : (k === 'grind' || k === 'ratio') ? v.toFixed(1) : String(r1(v));
+  const fmt = (k, v) => k === 'second' ? '+' + v.toFixed(1) : k === 'time' ? mmss(v) : (k === 'grind' || k === 'ratio') ? v.toFixed(1) : String(r1(v));
   const valHtml = k => k === 'ratio' ? `<small>1:</small>${fmt(k, s[k])}` : `${fmt(k, s[k])}<small>${tl(k)[1]}</small>`;
   const dials = Object.keys(b.p).map(k => {
     const [mn, mx, st] = b.p[k], [lab] = tl(k);
@@ -549,9 +551,20 @@ function detail(id) {
         <div id="set-body"><div class="dials">${cupsUI}${dials}${sugarUI}</div>
         <div class="foot"><span class="hint" id="saved-note"></span><button class="btn ghost sm" id="reset">Reset to defaults</button></div></div></section>
       <section class="panel">
+        <div class="dash" id="dash">
+          <div class="dash-cell" id="live-read" hidden><span class="label">Scale</span>
+            <div class="weight" id="lw">0.0<small> g</small></div><div class="flow"><b id="lf">0.0</b> g/s</div></div>
+          <div class="dash-cell"><span class="label" id="clock-src">Timer</span>
+            <div class="clock" id="clock">0:00</div><div class="flow">target <span id="target"></span></div></div>
+          <div class="dash-btns"><button class="btn" id="go">Start</button><button class="btn ghost" id="rst">Reset</button></div>
+          <div class="bar dash-bar"><i id="bar"></i></div>
+        </div>
+        ${b.kind === 'espresso' ? `<div class="shotno" id="shotno" hidden><span id="shotno-txt"></span><button class="linkbtn" id="shotno-reset">Back to first shot</button></div>` : ''}
+        <div class="shot" id="shot" hidden><p id="shot-txt"></p><ul id="shot-list"></ul>
+          <div class="shot-actions"><button class="btn sm" id="shot-apply">Apply grind change</button><button class="btn ghost sm" id="shot-target">Make this shot the target</button></div>
+          <div class="next-shot" id="next-shot"><b id="next-q">Making a second shot?</b>
+            <div class="shot-actions"><button class="btn sm" id="next-yes">Yes</button><button class="btn ghost sm" id="next-no">No, done</button></div></div></div>
         <div class="live" id="live" hidden>
-          <div class="live-row"><div class="weight" id="lw">0.0<small> g</small></div>
-            <div class="flow"><b id="lf">0.0</b> g/s<br><span id="lt">scale 0:00</span></div></div>
           <div class="pace" id="pace" hidden><div class="pace-main" id="pace-main"></div><div class="pace-sub mono" id="pace-sub"></div></div>
           <div class="target" id="ltarget"></div>
           ${b.prep ? `<div class="prep" id="prep">
@@ -563,11 +576,6 @@ function detail(id) {
         </div>
         <div class="summary" id="sum"></div>
         <h3 class="label sec">Method</h3><ol class="steps" id="steps"></ol>
-        <div class="timer"><div class="clock" id="clock">0:00 <small id="target"></small></div>
-          <button class="btn" id="go">Start</button><button class="btn ghost" id="rst">Reset</button>
-          <div class="bar"><i id="bar"></i></div></div>
-        <div class="shot" id="shot" hidden><p id="shot-txt"></p><ul id="shot-list"></ul>
-          <div class="shot-actions"><button class="btn sm" id="shot-apply">Apply grind change</button><button class="btn ghost sm" id="shot-target">Make this shot the target</button></div></div>
         <h3 class="label sec">How did it taste?</h3>
         <div class="chips" id="taste">${b.taste.map((t, i) => `<button class="chip" data-taste="${i}" aria-pressed="false">${t[0]}</button>`).join('')}</div>
         <div class="fix" id="fix" hidden><p id="fix-txt"></p><ul id="fix-list"></ul><button class="btn" id="apply">Apply changes</button></div>
@@ -583,8 +591,15 @@ function detail(id) {
   };
   const setSlider = k => { const el = $('r-' + k); if (el) el.value = s[k]; };
 
+  const effGrind = () => r1(clamp(s.grind + (shotSession.n >= 2 ? s.second : 0), b.p.grind[0], b.p.grind[1]));
   const paint = (save = true) => {
     const d = derive(id, s);
+    if (b.kind === 'espresso') {
+      if (shotSession.n >= 2 && Date.now() - shotSession.last > 20 * 60000) shotSession.n = 1;
+      d.grind = effGrind().toFixed(1);
+      $('shotno').hidden = shotSession.n < 2;
+      $('shotno-txt').innerHTML = `Shot ${shotSession.n} · grind <b class="mono">${d.grind}</b> <span class="muted">(${s.grind.toFixed(1)} + ${s.second.toFixed(1)})</span>`;
+    }
     for (const k in b.p) setSlider(k);
     if ($('h-water')) $('h-water').textContent = `≈ ${Math.max(0, r0(d.water - 2 * d.dose))} ml in the cup`;
     for (const k in b.p) { const [mn, mx] = b.p[k]; $('r-' + k).style.setProperty('--p', ((s[k] - mn) / (mx - mn) * 100) + '%'); $('v-' + k).innerHTML = valHtml(k); }
@@ -595,7 +610,7 @@ function detail(id) {
        <div><div class="label">Ratio</div><div class="v">1:${d.r}</div></div>`;
     steps = b.steps(d); plan = b.pourPlan ? b.pourPlan(d) : null;
     $('steps').innerHTML = steps.map(([t, txt]) => `<li><span class="t">${mmss(t)}</span><span>${esc(txt)}</span></li>`).join('');
-    $('target').textContent = '/ ' + mmss(s.time);
+    $('target').textContent = mmss(s.time);
     $('saved-note').textContent = Sync.on ? (Sync.canWrite ? 'Syncs to your gist' : 'Read-only sync: changes stay on this phone') : 'Saved on this phone';
     const out = b.kind === 'espresso' ? `${d.out} g out` : b.kind === 'ratio' ? `${d.water} g · 1:${d.r}` : `${d.water} g water`;
     $('set-sum').textContent = [`${d.dose} g`, `dial ${d.grind}`, `${s.temp}°C`, s.hob != null ? `hob ${s.hob}` : null, out, mmss(s.time)].filter(Boolean).join(' · ');
@@ -605,7 +620,7 @@ function detail(id) {
 
   const tick = () => {
     const e = elapsed();
-    $('clock').firstChild.nodeValue = mmss(e) + ' ';
+    $('clock').textContent = mmss(e);
     $('bar').style.width = Math.min(100, e / s.time * 100) + '%';
     const items = [...$('steps').children]; const active = timer.id || timer.elapsed > 0;
     let idx = -1; steps.forEach(([t], i) => { if (t <= e) idx = i; });
@@ -613,13 +628,16 @@ function detail(id) {
     items.forEach((li, i) => { li.classList.toggle('now', !!active && i === idx); li.classList.toggle('done', !!active && i < idx); });
   };
 
-  const startTimer = async () => {
+  const startTimer = async (fromScale = false) => {
     if (timer.id) return;
-    timer.start = Date.now(); timer.id = setInterval(tick, 200); $('go').textContent = 'Pause';
+    if (timer.done) { timer.done = false; timer.elapsed = 0; }   /* a finished shot: the next Start is a new shot */
+    timer.start = Date.now(); timer.id = setInterval(tick, 200); $('go').textContent = b.kind === 'espresso' ? 'Stop' : 'Pause';
+    if (!fromScale && Scale.connected) Scale.send(0x04).catch(() => {});   /* start the scale's timer too */
     result = null; $('result').hidden = true; $('shot').hidden = true; alerted = false; stillSince = 0;
     Awake.ensure();
   };
-  const pauseTimer = () => { timer.elapsed = elapsed(); stopTimer(); $('go').textContent = 'Resume'; tick(); };
+  const pauseTimer = (fromScale = false) => { timer.elapsed = elapsed(); stopTimer(); $('go').textContent = 'Resume'; tick();
+    if (!fromScale && Scale.connected) Scale.send(0x05).catch(() => {}); };
   /* Espresso: compare the shot time with the target (scaled to the yield actually reached) and suggest a grind change.
      On the 064S each 0.1 on the dial is ~5 µm; as a starting rule, 0.1 per ~3 s of difference. */
   let shot = null;
@@ -628,20 +646,31 @@ function detail(id) {
     let dg = Math.round(dt / 30 * 10) / 10;
     if (Math.abs(dt) > 2 && dg === 0) dg = dt > 0 ? .1 : -.1;
     dg = clamp(dg, -.5, .5);
-    const ng = r1(clamp(s.grind + dg, b.p.grind[0], b.p.grind[1]));
-    shot = { t, w, ng };
+    const second = shotSession.n >= 2;
+    const ng = second ? r1(clamp(s.second + dg, b.p.second[0], b.p.second[1])) : r1(clamp(s.grind + dg, b.p.grind[0], b.p.grind[1]));
+    shot = { t, w, ng, second };
     const what = `${measured ? '' : 'Assuming '}${r1(w)} g in ${mmss(t)}${measured ? '' : ' (no scale reading)'}`;
     let verdict;
-    if (Math.abs(dt) <= 2) verdict = `${what}. Right on your ${mmss(s.time)} target, so keep the grind where it is.`;
-    else verdict = `${what}: ${Math.round(Math.abs(dt))} s ${dt < 0 ? 'fast' : 'slow'} for ${r1(w)} g against your ${mmss(s.time)} target. ${dt < 0 ? 'Grind finer to slow it down.' : 'Grind coarser to speed it up.'}`;
+    const label = second ? `Shot ${shotSession.n}: ` : '';
+    if (Math.abs(dt) <= 2) verdict = `${label}${what}. Right on your ${mmss(s.time)} target, so keep the grind where it is.`;
+    else verdict = `${label}${what}: ${Math.round(Math.abs(dt))} s ${dt < 0 ? 'fast' : 'slow'} for ${r1(w)} g against your ${mmss(s.time)} target. ${dt < 0 ? 'Grind finer to slow it down.' : 'Grind coarser to speed it up.'}${second ? ' This changes only the extra coarseness for later shots.' : ''}`;
     $('shot-txt').textContent = verdict;
-    $('shot-list').innerHTML = Math.abs(dt) <= 2 ? '' : `<li><span>Grind (064S dial)</span><span class="mono">${s.grind.toFixed(1)} → <b>${ng.toFixed(1)}</b></span></li>`;
-    $('shot-apply').hidden = Math.abs(dt) <= 2 || ng === s.grind;
+    const curV = second ? s.second : s.grind;
+    $('shot-list').innerHTML = Math.abs(dt) <= 2 ? '' : second
+      ? `<li><span>Second shot: coarser by</span><span class="mono">+${curV.toFixed(1)} → <b>+${ng.toFixed(1)}</b></span></li>`
+      : `<li><span>Grind (064S dial)</span><span class="mono">${curV.toFixed(1)} → <b>${ng.toFixed(1)}</b></span></li>`;
+    $('shot-apply').hidden = Math.abs(dt) <= 2 || ng === curV;
+    const nextG = r1(clamp((second ? s.grind + s.second : s.grind + s.second), b.p.grind[0], b.p.grind[1]));
+    $('next-q').textContent = second ? 'Making another shot?' : 'Making a second shot?';
+    $('next-yes').textContent = `Yes · grind ${nextG.toFixed(1)}`;
+    $('next-shot').hidden = false;
     $('shot').hidden = false;
   };
-  const finish = () => {
-    pauseTimer();
+  const finish = (fromScale = false) => {
+    pauseTimer(fromScale);
+    if (b.kind === 'espresso') { timer.done = true; $('go').textContent = 'Start'; }
     if (b.kind === 'espresso' && timer.elapsed >= 5) {
+      shotSession.last = Date.now();
       const measured = Scale.connected && Scale.w > 1;
       shotAdvice(r0(timer.elapsed), measured ? r1(Scale.w) : s.out, measured);
       return;
@@ -659,12 +688,11 @@ function detail(id) {
   /* live scale panel */
   const live = () => {
     const panel = $('live'); if (!panel) return;
-    panel.hidden = !Scale.connected;
+    panel.hidden = !Scale.connected; $('live-read').hidden = !Scale.connected; $('dash').classList.toggle('two', Scale.connected);
     app.querySelectorAll('.scale-only').forEach(el => el.hidden = !Scale.connected);
     if (!Scale.connected) return;
     $('lw').innerHTML = `${Scale.w.toFixed(1)}<small> g</small>`;
     $('lf').textContent = Scale.flow.toFixed(1);
-    $('lt').textContent = `scale ${mmss(Scale.ms / 1000)}`;
     const targets = steps.map(x => x[2]).filter(w => w != null);
     const next = targets.find(w => Scale.w < w - 0.5);
     const T = $('ltarget');
@@ -675,10 +703,11 @@ function detail(id) {
       T.innerHTML = `${b.kind === 'espresso' ? 'Stop at' : 'Pour to'} <b class="mono">${next} g</b> · <span class="mono">${Math.max(0, next - Scale.w).toFixed(1)} g</span> to go<div class="bar"><i style="width:${pct}%"></i></div>`;
     } else T.innerHTML = `Target reached <span class="mono">(${targets[targets.length - 1]} g)</span>`;
 
+    syncScaleTimer();
     coach();
     if (arm && Scale.w >= (b.kind === 'espresso' ? 0.3 : 2)) { arm = false; $('arm').textContent = armLabel; startTimer(); }
     if (b.kind === 'espresso' && timer.id) {
-      if (!alerted && Scale.w >= s.out - 1.5) { alerted = true; beep(3); panel.classList.add('alert'); setTimeout(() => panel.classList.remove('alert'), 2500); }
+      if (!alerted && Scale.w >= s.out - 1.5) { alerted = true; beep(3); $('dash').classList.add('alert'); setTimeout(() => $('dash').classList.remove('alert'), 2500); }
       if (alerted) {
         if (Math.abs(Scale.flow) < 0.15) { stillSince = stillSince || Date.now(); if (Date.now() - stillSince > 2500) finish(); }
         else stillSince = 0;
@@ -686,6 +715,28 @@ function detail(id) {
     }
     tick();
   };
+  /* The scale's own timer (Flow Rate mode) drives the app timer when it runs: start, follow and stop with it.
+     When it never moves (Weight mode, or no scale) the manual Start/Stop is the fallback. */
+  const sc = { last: null, running: false, changed: 0 };
+  const syncScaleTimer = () => {
+    if (!Scale.connected) { sc.last = null; sc.running = false; $('clock-src').textContent = 'Timer'; return; }
+    const now = Date.now(), ms = Scale.ms;
+    if (sc.last === null) { sc.last = ms; return; }
+    if (ms > sc.last) {
+      sc.changed = now;
+      if (!sc.running) { sc.running = true; if (!timer.id) startTimer(true); }
+      if (timer.id) { timer.elapsed = 0; timer.start = now - ms; }
+    } else if (ms < sc.last) {
+      sc.running = ms > 0; sc.changed = now;
+      if (ms === 0 && !timer.id) { timer.elapsed = 0; $('go').textContent = 'Start'; tick(); }
+    } else if (sc.running && now - sc.changed > 1200) {
+      sc.running = false;
+      if (timer.id) { b.kind === 'espresso' ? finish(true) : pauseTimer(true); }
+    }
+    sc.last = ms;
+    $('clock-src').textContent = sc.running || (Scale.ms > 0 && !timer.id) ? 'Scale timer' : 'Timer';
+  };
+
   /* Pour-pace coaching: compares weight with the planned curve and live flow with the target rate. */
   const coach = () => {
     const box = $('pace'); if (!box) return;
@@ -717,7 +768,7 @@ function detail(id) {
     lastPhase = phase;
     box.hidden = false; box.dataset.state = state; $('pace-main').textContent = main; $('pace-sub').textContent = sub;
   };
-  coachIv = setInterval(() => { if (timer.id && Scale.connected) coach(); }, 500);
+  coachIv = setInterval(() => { if (Scale.connected) { syncScaleTimer(); if (timer.id) coach(); } }, 500);
   unsubScale = Scale.on(live);
 
   /* controls */
@@ -774,8 +825,22 @@ function detail(id) {
     };
   }
   $('shot-apply').onclick = () => {
-    if (!shot) return; s.grind = shot.ng; setSlider('grind'); $('shot').hidden = true; paint(); toast(`Grind set to ${shot.ng.toFixed(1)}. Pull the next shot.`);
+    if (!shot) return;
+    if (shot.second) { s.second = shot.ng; setSlider('second'); } else { s.grind = shot.ng; setSlider('grind'); }
+    $('shot-apply').hidden = true; $('shot-list').innerHTML = ''; paint();
+    const nextG = r1(clamp(s.grind + s.second, b.p.grind[0], b.p.grind[1]));
+    $('next-yes').textContent = `Yes · grind ${nextG.toFixed(1)}`;
+    toast(shot.second ? `Later shots now grind ${shot.ng.toFixed(1)} coarser.` : `Grind set to ${shot.ng.toFixed(1)}.`);
   };
+  if (b.kind === 'espresso') {
+    const nextShot = () => { stopTimer(); timer.elapsed = 0; $('go').textContent = 'Start'; result = null; tick(); };
+    $('next-yes').onclick = () => {
+      shotSession.n += 1; shotSession.last = Date.now(); $('shot').hidden = true; nextShot(); paint(false);
+      toast(`Shot ${shotSession.n}: grind at ${effGrind().toFixed(1)}`); window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    $('next-no').onclick = () => { shotSession.n = 1; $('next-shot').hidden = true; paint(false); };
+    $('shotno-reset').onclick = () => { shotSession.n = 1; paint(false); };
+  }
   $('shot-target').onclick = () => {
     if (!shot) return;
     s.out = clamp(Math.round(shot.w * 2) / 2, b.p.out[0], b.p.out[1]); setSlider('out');
@@ -812,7 +877,8 @@ function detail(id) {
 
   const go = $('go');
   go.onclick = () => { unlockAudio(); if (timer.id) { b.kind === 'espresso' ? finish() : pauseTimer(); } else startTimer(); };
-  $('rst').onclick = () => { resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
+  if (b.kind !== 'espresso') go.textContent = 'Start';
+  $('rst').onclick = () => { timer.done = false; if (Scale.connected) Scale.send(0x06).catch(() => {}); resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
 
   cur = { id, editing: false, applyRemote(rs) {
     if (cur.editing || sameRec(id, rs, s)) return;
