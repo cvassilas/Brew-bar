@@ -18,3 +18,9 @@ Protocol from Bookoo's official spec: [BooKooCode/OpenSource](https://github.com
 Tap **Sync off** → paste a classic GitHub token with only the `gist` scope → **Save and sync**. A private gist is created.
 On another phone, enter the same gist ID (plus the token if that phone should be able to change settings).
 Settings merge per brewer, newest change wins; the app checks for updates every 45 s and when reopened.
+
+## Beans
+Tap **Scan beans** and photograph the bag. Brew Bar reads any QR code or barcode (barcodes are looked up on Open Food Facts) and reads the label text with Tesseract.js (downloaded on first use) to fill in roaster, coffee, roast level and roast date. Check and save. The home screen shows bean age and whether it's resting, at its best or past its best for espresso and filter. Bags sync with your recipes.
+
+## Humidity (espresso)
+Optional. Uses your location and Open-Meteo to get local humidity. When the grind is set, today's humidity is remembered; later the grind moves 0.1 for each ~15% change (max ±0.3): coarser when it's more humid, finer when drier.

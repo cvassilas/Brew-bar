@@ -251,4 +251,25 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .share-opt{flex-direction:row;align-items:center;gap:14px;width:100%}
 .share-opt .pt{display:flex;flex-direction:column;gap:2px}
 .qr-mini{width:34px;height:34px;flex:none;border-radius:6px;background:#FFFFFF url(icons/qr.svg) center/90% no-repeat;border:1px solid var(--line)}
+.beans-card{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.beans-card .bc-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.beans-card b{font-size:17px}
+.beans-card .small{margin:0}
+.bc-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.bc-btns{display:flex;gap:8px}
+[class^=pill-]{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid currentColor}
+.pill-good{color:var(--ok)} .pill-rest{color:var(--crema)} .pill-old,.pill-warn{color:var(--warn)}
+.bean-line{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:-6px 0 12px;font-size:14px}
+.bean-tip{margin:-4px 0 12px}
+.humid{margin:-4px 0 12px}
+.humid p{margin:0 0 6px}
+.humid .linkbtn{margin-left:6px}
+.bean input,.bean select{font-family:var(--f-body)}
+.dlg select{width:100%;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-top:6px}
+.two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.dlg .label{margin-top:10px}
+.scan-btn{align-self:flex-start;cursor:pointer}
+.bags{display:flex;flex-direction:column;gap:6px}
+.bag{display:flex;justify-content:space-between;gap:10px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent}
+.bag span{color:var(--muted);font-size:13px;white-space:nowrap}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}.pace{animation:none!important}.sf-pulse{animation:none}}

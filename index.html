@@ -74,6 +74,32 @@
   </form>
 </dialog>
 
+<dialog id="bean-dlg">
+  <form method="dialog" class="dlg bean">
+    <h2>Beans</h2>
+    <label class="btn scan-btn" for="bean-photo">Scan the bag</label>
+    <input type="file" id="bean-photo" accept="image/*" capture="environment" hidden>
+    <p class="small" id="bean-status" role="status"></p>
+    <label class="label" for="bean-roaster">Roaster</label>
+    <input id="bean-roaster" autocomplete="off" placeholder="e.g. Kiss the Hippo">
+    <label class="label" for="bean-name">Coffee</label>
+    <input id="bean-name" autocomplete="off" placeholder="e.g. George Street">
+    <div class="two-col">
+      <div><label class="label" for="bean-date">Roast date</label><input type="date" id="bean-date"></div>
+      <div><label class="label" for="bean-roast">Roast</label>
+        <select id="bean-roast"><option value="">Not sure</option><option value="light">Light</option><option value="medium">Medium</option><option value="dark">Dark</option></select></div>
+    </div>
+    <label class="label" for="bean-link">Link</label>
+    <input id="bean-link" autocomplete="off" placeholder="From the bag's QR code">
+    <div class="row end">
+      <button type="button" class="btn ghost" id="bean-del" hidden>Remove</button>
+      <button type="button" class="btn ghost" id="bean-cancel">Cancel</button>
+      <button type="button" class="btn" id="bean-save">Use these beans</button>
+    </div>
+    <div id="bean-list-wrap" hidden><h3 class="label" style="margin:18px 0 8px">Or switch to a previous bag</h3><div class="bags" id="bean-list"></div></div>
+  </form>
+</dialog>
+
 <dialog id="scale-dlg">
   <form method="dialog" class="dlg">
     <h2>Connect your scale</h2>

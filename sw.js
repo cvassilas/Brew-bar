@@ -1,7 +1,7 @@
 /* Brew Bar service worker.
    App files: network first (bypassing the HTTP cache) so updates show on the next open; cached copy when offline.
    Fonts: cache first. GitHub API: never touched. */
-const VERSION = 'brewbar-v18';
+const VERSION = 'brewbar-v19';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/qr.svg', 'vendor/qrcode.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
@@ -25,6 +25,8 @@ self.addEventListener('fetch', e => {
     })());
     return;
   }
+  /* Cache fonts and the label-reader library; everything else (weather, barcode lookups) always goes to the network. */
+  if (!/fonts\.(googleapis|gstatic)\.com$|cdn\.jsdelivr\.net$|tessdata\.projectnaptha\.com$/.test(url.hostname)) return;
   e.respondWith(caches.open(VERSION).then(async c => {
     const hit = await c.match(e.request);
     if (hit) return hit;

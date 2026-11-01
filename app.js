@@ -123,7 +123,7 @@ const LABELS = { rate: ['Pour rate', ' g/s'], second: ['Second shot: coarser by'
   water: ['Water', 'g'], ratio: ['Ratio', '1 :'], time: ['Time', ''],
   temp: { espresso: ['Machine temp', '°C'], briki: ['Starting water', '°C'], moka: ['Kettle water', '°C'], _: ['Water temp', '°C'] } };
 const SUGAR = [['Sketos', 'no sugar', 0], ['Metrios', '1 tsp', 1], ['Glykos', '2 tsp', 2]];
-const recKeys = id => Object.keys(BREWERS[id].p).concat(BREWERS[id].sugar ? ['sugar'] : [], BREWERS[id].cups ? ['cups'] : []);
+const recKeys = id => Object.keys(BREWERS[id].p).concat(BREWERS[id].sugar ? ['sugar'] : [], BREWERS[id].cups ? ['cups'] : [], BREWERS[id].kind === 'espresso' ? ['rhRef'] : []);
 const sameRec = (id, a, b) => !!a && !!b && recKeys(id).every(k => a[k] === b[k]);
 
 /* ---------- Local store ---------- */
@@ -133,6 +133,8 @@ const LS = {
 };
 let DATA = LS.get('data', { recipes: {} });
 if (!DATA.recipes) DATA = { recipes: {} };
+if (!DATA.beans) DATA.beans = {};          /* bags of beans: {id: {roaster, name, roast, roastDate, link, updatedAt, deleted?}} */
+if (!('current' in DATA)) DATA.current = null;   /* {id, updatedAt} */
 
 /* Linked dose / water / ratio for ratio brewers: water is the anchor (how much coffee you want).
    Bean weight -> keeps water, ratio follows. Water or ratio -> bean weight follows. */
@@ -156,6 +158,7 @@ function stateFor(id) {
   if (b.sugar) s.sugar = typeof saved.sugar === 'number' ? saved.sugar : 1;
   if (b.cups) { const [mn, mx, d] = b.cups; s.cups = (typeof saved.cups === 'number' && saved.cups >= mn && saved.cups <= mx) ? saved.cups : d; }
   if (b.kind === 'ratio' && typeof saved.water !== 'number') s.water = snapP(b, 'water', s.dose * s.ratio);
+  if (b.kind === 'espresso') s.rhRef = typeof saved.rhRef === 'number' ? saved.rhRef : null;
   return s;
 }
 function saveRecipe(id, s) {
@@ -174,6 +177,7 @@ function derive(id, s) {
 }
 
 /* ---------- Gist sync ---------- */
+const syncPayload = () => JSON.stringify({ app: 'brew-bar', v: 2, recipes: DATA.recipes, beans: DATA.beans, current: DATA.current }, null, 1);
 const Sync = {
   cfg: LS.get('sync', { token: '', gistId: '' }),
   state: 'off', msg: '', last: 0, timer: null, busy: false, FILE: 'brewbar.json',
@@ -200,6 +204,15 @@ const Sync = {
       if (b && (!a || (b.updatedAt || 0) > (a.updatedAt || 0))) { DATA.recipes[id] = b; changed = true; }
       else if (a && (!b || (a.updatedAt || 0) > (b.updatedAt || 0))) localNewer = true;
     }
+    const rb = (remote && remote.beans) || {};
+    for (const id of new Set([...Object.keys(DATA.beans), ...Object.keys(rb)])) {
+      const a = DATA.beans[id], b = rb[id];
+      if (b && (!a || (b.updatedAt || 0) > (a.updatedAt || 0))) { DATA.beans[id] = b; changed = true; }
+      else if (a && (!b || (a.updatedAt || 0) > (b.updatedAt || 0))) localNewer = true;
+    }
+    const rc = remote && remote.current, lc = DATA.current;
+    if (rc && (!lc || (rc.updatedAt || 0) > (lc.updatedAt || 0))) { DATA.current = rc; changed = true; }
+    else if (lc && (!rc || (lc.updatedAt || 0) > (rc.updatedAt || 0))) localNewer = true;
     if (changed) LS.set('data', DATA);
     return { changed, localNewer };
   },
@@ -219,7 +232,7 @@ const Sync = {
       if (changed) onRemoteData();
       if ((localNewer || pushToo) && this.canWrite) {
         await this.api('/gists/' + this.cfg.gistId, { method: 'PATCH',
-          body: JSON.stringify({ files: { [this.FILE]: { content: JSON.stringify({ app: 'brew-bar', v: 1, recipes: DATA.recipes }, null, 1) } } }) });
+          body: JSON.stringify({ files: { [this.FILE]: { content: syncPayload() } } }) });
       }
       this.last = Date.now(); this.msg = ''; this.setState(this.canWrite ? 'on' : 'ro');
     } catch (e) { this.msg = e.message; this.setState('err'); }
@@ -228,7 +241,7 @@ const Sync = {
   schedule() { if (!this.canWrite) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(true), 1500); },
   async create() {
     const g = await this.api('/gists', { method: 'POST', body: JSON.stringify({ description: 'Brew Bar settings', public: false,
-      files: { [this.FILE]: { content: JSON.stringify({ app: 'brew-bar', v: 1, recipes: DATA.recipes }, null, 1) } } }) });
+      files: { [this.FILE]: { content: syncPayload() } } }) });
     return g.id;
   },
   setState(st) {
@@ -486,12 +499,191 @@ function checkSharedGist() {
   $('follow-yes').onclick = async () => {
     clean(); $('follow-dlg').close();
     Sync.cfg = { token: '', gistId: id }; LS.set('sync', Sync.cfg);
-    DATA = { recipes: {} }; LS.set('data', DATA);
+    DATA = { recipes: {}, beans: {}, current: null }; LS.set('data', DATA);
     await Sync.run(false);
     onRemoteData();
     toast(Sync.state === 'err' ? Sync.msg : 'Following the shared recipes.');
   };
 }
+
+/* ---------- Beans ---------- */
+const ROASTERS = ['Kiss the Hippo', 'Assembly', 'Square Mile', 'Origin', 'Workshop', 'Dark Arts', 'Caravan', 'Ozone', 'Climpson', 'Allpress',
+  'Union', 'Monmouth', 'Colonna', 'Round Hill', 'Rave', 'Hasbean', 'Extract', 'Pact', 'Notes', 'Dog & Hat', 'Plot', 'Crankhouse', 'Girls Who Grind',
+  'Curve', 'Modern Standard', 'Yallah', 'Clifton', 'Tim Wendelboe', 'La Cabra', 'Friedhats', 'Onyx', 'Sey', 'Manhattan', 'April', 'Nomad', 'Grind', 'Volcano', 'Redemption'];
+const beanList = () => Object.values(DATA.beans).filter(b => !b.deleted).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+const currentBean = () => (DATA.current && DATA.beans[DATA.current.id] && !DATA.beans[DATA.current.id].deleted) ? DATA.beans[DATA.current.id] : null;
+function beanDays(bn) {
+  if (!bn || !bn.roastDate) return null;
+  const d = new Date(bn.roastDate + 'T00:00:00'); if (isNaN(d)) return null;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+/* Rough resting windows (days after roast) by roast level. */
+function restStatus(bn, forEspresso) {
+  const days = beanDays(bn); if (days == null) return null;
+  const roast = bn.roast || 'medium';
+  const win = forEspresso ? { light: [10, 35], medium: [7, 30], dark: [4, 21] }[roast] : { light: [5, 35], medium: [4, 30], dark: [3, 21] }[roast];
+  if (days < 0) return { days, label: 'Roast date is in the future', cls: 'warn' };
+  if (days < win[0]) return { days, label: `Resting (best from day ${win[0]})`, cls: 'rest' };
+  if (days <= win[1]) return { days, label: 'At its best', cls: 'good' };
+  return { days, label: 'Past its best', cls: 'old' };
+}
+function beanTitle(bn) { return [bn.roaster, bn.name].filter(Boolean).join(' · ') || 'Unnamed beans'; }
+function beanLine(bn, forEspresso) {
+  const st = restStatus(bn, forEspresso);
+  return `${esc(beanTitle(bn))}${st ? ` <span class="pill-${st.cls}">day ${st.days} · ${st.label}</span>` : ''}`;
+}
+function saveBean(bn) {
+  bn.updatedAt = Date.now(); DATA.beans[bn.id] = bn; DATA.current = { id: bn.id, updatedAt: Date.now() };
+  LS.set('data', DATA); Sync.schedule();
+}
+
+/* Reading a bag: barcode/QR (BarcodeDetector), barcode lookup (Open Food Facts), label text (Tesseract, loaded on first use). */
+async function shrinkImage(file, max = 1600) {
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('Could not load the label reader. Check your connection and try again.')); document.head.appendChild(el); });
+}
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function parseLabel(text) {
+  const out = {};
+  const flat = text.replace(/\s+/g, ' ');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cands = [];
+  const add = (y, m, d, idx) => {
+    y = +y; if (y < 100) y += 2000; m = +m; d = +d;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return;
+    const dt = new Date(y, m - 1, d); if (dt.getMonth() !== m - 1) return;
+    const age = (today - dt) / 86400000; if (age < -1 || age > 400) return;   /* skip best-before dates and nonsense */
+    const near = /roast/i.test(flat.slice(Math.max(0, idx - 40), idx));
+    cands.push({ iso: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, near, t: dt.getTime() });
+  };
+  let m; const re1 = /\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g;
+  while ((m = re1.exec(flat))) add(m[3], m[2], m[1], m.index);
+  const re2 = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{2,4})\b/gi;
+  while ((m = re2.exec(flat))) add(m[3], MONTHS[m[2].toLowerCase()], m[1], m.index);
+  const re3 = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/gi;
+  while ((m = re3.exec(flat))) add(m[3], MONTHS[m[1].toLowerCase()], m[2], m.index);
+  const re4 = /\b(20\d{2})-(\d{2})-(\d{2})\b/g;
+  while ((m = re4.exec(flat))) add(m[1], m[2], m[3], m.index);
+  if (cands.length) { cands.sort((a, b) => (b.near - a.near) || (b.t - a.t)); out.roastDate = cands[0].iso; }
+  const lvl = flat.match(/\b(light|medium[- ]?dark|medium|dark)\s*(?:roast)?\b/i);
+  if (lvl) out.roast = /dark/i.test(lvl[1]) && !/medium/i.test(lvl[1]) ? 'dark' : /medium/i.test(lvl[1]) ? 'medium' : 'light';
+  const low = flat.toLowerCase();
+  const r = ROASTERS.find(n => low.includes(n.toLowerCase())); if (r) out.roaster = r;
+  const noise = /roast|net|weight|\d+\s?g\b|kg|best|before|date|www|http|@|ingredients|store|produce|grown|tasting|notes|whole bean|altitude|process|varie|masl/i;
+  const lines = text.split('\n').map(l => l.replace(/[^A-Za-zÀ-ÿ0-9&'’ .-]/g, '').replace(/\s+/g, ' ').trim())
+    .filter(l => l.length >= 3 && /[A-Za-z]{3}/.test(l) && !noise.test(l) && !/^(for )?(espresso|filter|omni)( roast)?$/i.test(l) && !(r && l.toLowerCase().includes(r.toLowerCase())));
+  if (lines.length) out.name = lines.slice(0, 2).join(' ').slice(0, 60);
+  return out;
+}
+async function scanBag(file, onStatus) {
+  const found = {};
+  const canvas = await shrinkImage(file);
+  if ('BarcodeDetector' in window) {
+    try {
+      const det = new BarcodeDetector({ formats: ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+      for (const c of await det.detect(canvas)) {
+        if (c.format === 'qr_code' && /^https?:\/\//i.test(c.rawValue)) found.link = c.rawValue;
+        else if (/^\d{8,14}$/.test(c.rawValue)) found.barcode = c.rawValue;
+      }
+    } catch (e) {}
+  }
+  if (found.barcode) {
+    onStatus('Looking up the barcode…');
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${found.barcode}.json?fields=product_name,brands`);
+      const j = await r.json();
+      if (j && j.product) { if (j.product.brands) found.roaster = j.product.brands.split(',')[0].trim(); if (j.product.product_name) found.name = j.product.product_name; }
+    } catch (e) {}
+  }
+  onStatus('Reading the label… (the first time downloads the reader, a few MB)');
+  if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  const { data } = await Tesseract.recognize(canvas, 'eng', { logger: m => { if (m.status === 'recognizing text') onStatus(`Reading the label… ${Math.round(m.progress * 100)}%`); } });
+  const parsed = parseLabel(data.text || '');
+  return { ...parsed, ...Object.fromEntries(Object.entries(found).filter(([, v]) => v)) , _text: data.text || '' };
+}
+
+let beanEditing = null;
+function openBeans(edit) {
+  beanEditing = edit ? { ...edit } : { id: 'b' + Date.now().toString(36) };
+  const f = beanEditing;
+  $('bean-roaster').value = f.roaster || ''; $('bean-name').value = f.name || ''; $('bean-date').value = f.roastDate || '';
+  $('bean-roast').value = f.roast || ''; $('bean-link').value = f.link || '';
+  $('bean-status').textContent = edit ? '' : 'Take a photo of the bag. The roast date, roaster and roast level are read where they can be. Check them before saving.';
+  $('bean-del').hidden = !edit;
+  const list = beanList().filter(b => b.id !== f.id);
+  $('bean-list-wrap').hidden = !list.length;
+  $('bean-list').innerHTML = list.map(b => `<button type="button" class="bag" data-bag="${b.id}"><b>${esc(beanTitle(b))}</b><span>${b.roastDate ? 'Roasted ' + new Date(b.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'No roast date'}</span></button>`).join('');
+  $('bean-list').querySelectorAll('[data-bag]').forEach(el => el.onclick = () => {
+    DATA.current = { id: el.dataset.bag, updatedAt: Date.now() }; LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView(); toast('Beans changed.');
+  });
+  $('bean-dlg').showModal();
+}
+$('bean-photo').onchange = async e => {
+  const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
+  const st = $('bean-status'); st.textContent = 'Looking at the photo…';
+  try {
+    const r = await scanBag(file, t => st.textContent = t);
+    if (r.roaster && !$('bean-roaster').value) $('bean-roaster').value = r.roaster;
+    if (r.name && !$('bean-name').value) $('bean-name').value = r.name;
+    if (r.roastDate) $('bean-date').value = r.roastDate;
+    if (r.roast) $('bean-roast').value = r.roast;
+    if (r.link) $('bean-link').value = r.link;
+    const got = ['roaster', 'name', 'roastDate', 'roast', 'link'].filter(k => r[k]);
+    st.textContent = got.length ? `Found: ${got.map(k => ({ roaster: 'roaster', name: 'coffee name', roastDate: 'roast date', roast: 'roast level', link: 'QR link' })[k]).join(', ')}. Check and correct anything wrong.`
+      : 'Couldn\'t read much from that photo. Try closer, in good light, with the label flat, or type the details.';
+  } catch (err) { st.textContent = err.message || 'Couldn\'t read the photo. Type the details instead.'; }
+};
+$('bean-cancel').onclick = () => $('bean-dlg').close();
+$('bean-save').onclick = () => {
+  const f = beanEditing;
+  f.roaster = $('bean-roaster').value.trim(); f.name = $('bean-name').value.trim(); f.roastDate = $('bean-date').value;
+  f.roast = $('bean-roast').value; f.link = $('bean-link').value.trim(); delete f.deleted;
+  if (!f.roaster && !f.name && !f.roastDate) { $('bean-status').textContent = 'Add at least a name or a roast date.'; return; }
+  saveBean(f); $('bean-dlg').close(); refreshView(); toast('Beans saved.');
+};
+$('bean-del').onclick = () => {
+  const f = beanEditing; if (!DATA.beans[f.id]) { $('bean-dlg').close(); return; }
+  DATA.beans[f.id] = { id: f.id, deleted: true, updatedAt: Date.now() };
+  if (DATA.current && DATA.current.id === f.id) DATA.current = { id: null, updatedAt: Date.now() };
+  LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView();
+};
+const refreshView = () => { if (cur) { const id = cur.id; detail(id); } else home(); };
+
+/* ---------- Humidity (espresso only) ----------
+   Damp air makes ground coffee clump and shots run slower; dry air the reverse. The effect is small, so the
+   grind moves 0.1 for every ~15% change in humidity since the grind was last set, capped at ±0.3. */
+const Humid = {
+  get mode() { return LS.get('humid', null); },   /* 'on' | 'off' | null (not asked yet) */
+  rh: (LS.get('rh', null) || {}).rh ?? null, at: (LS.get('rh', null) || {}).at || 0,
+  async refresh(force = false) {
+    if (this.mode !== 'on') return;
+    if (!force && this.rh != null && Date.now() - this.at < 30 * 60000) return;
+    let loc = LS.get('loc', null);
+    if (!loc) {
+      loc = await new Promise(res => navigator.geolocation ? navigator.geolocation.getCurrentPosition(
+        p => res({ lat: +p.coords.latitude.toFixed(2), lon: +p.coords.longitude.toFixed(2) }), () => res(null), { timeout: 15000, maximumAge: 86400000 }) : res(null));
+      if (!loc) { toast('Location is needed for local humidity. Allow it for this site, or turn the humidity option off.'); return; }
+      LS.set('loc', loc);
+    }
+    try {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=relative_humidity_2m`, { cache: 'no-store' });
+      const j = await r.json(); const v = j && j.current && j.current.relative_humidity_2m;
+      if (typeof v === 'number') { this.rh = v; this.at = Date.now(); LS.set('rh', { rh: v, at: this.at }); if (cur && cur.onHumid) cur.onHumid(); }
+    } catch (e) {}
+  }
+};
+function humidOffset(s) {
+  if (Humid.mode !== 'on' || Humid.rh == null || s.rhRef == null) return 0;
+  const d = Humid.rh - s.rhRef; if (Math.abs(d) < 10) return 0;
+  return clamp(r1(Math.round(d / 15) * .1), -.3, .3);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Humid.refresh(); });
 
 /* ---------- Views ---------- */
 let cur = null, timer = { id: null, start: 0, elapsed: 0 };
@@ -510,6 +702,13 @@ function home() {
   const app = $('app');
   app.innerHTML = `<div class="mast"><span class="label">Coffee recipes</span><h1>Brew Bar</h1>
     <p>Six brewers, dialled in for the Timemore 064S. Connect the Themis Ultra for live weight, auto-start and stop-shot alerts.</p></div>
+    ${(() => { const bn = currentBean();
+      return bn ? `<section class="beans-card"><div class="bc-main"><span class="label">Beans</span><b>${esc(beanTitle(bn))}</b>
+          <span class="small">${bn.roastDate ? `Roasted ${new Date(bn.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'No roast date'}${bn.roast ? ` · ${bn.roast} roast` : ''}</span>
+          <div class="bc-pills">${[['Espresso', true], ['Filter', false]].map(([n, e]) => { const st = restStatus(bn, e); return st ? `<span class="pill-${st.cls}">${n}: ${st.label}</span>` : ''; }).join('')}</div></div>
+          <div class="bc-btns"><button class="btn ghost sm" id="bean-edit">Edit</button><button class="btn sm" id="bean-new">New bag</button></div></section>`
+        : `<section class="beans-card empty"><div class="bc-main"><span class="label">Beans</span><b>What are you brewing?</b><span class="small">Scan the bag to track the roast date and how well rested the beans are.</span></div>
+          <div class="bc-btns"><button class="btn sm" id="bean-new">Scan beans</button></div></section>`; })()}
     <div class="rack">${Object.entries(BREWERS).map(([id, b]) => {
       const d = derive(id, stateFor(id));
       const [n, u] = b.kind === 'espresso' ? [d.out, 'g out'] : [d.water, 'g water'];
@@ -527,6 +726,8 @@ function home() {
   app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook(); renderModeBtn();
     app.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
+  $('bean-new').onclick = () => openBeans();
+  if ($('bean-edit')) $('bean-edit').onclick = () => openBeans(currentBean());
 }
 
 function detail(id) {
@@ -552,7 +753,11 @@ function detail(id) {
     `<button class="chip" data-sugar="${v}">${n} · ${d}</button>`).join('')}</div></div>` : '';
   const armLabel = b.kind === 'espresso' ? 'Tare · start on first drops' : 'Tare · start on pour';
 
+  const bn = currentBean();
   app.innerHTML = `<div class="head">${ICON[id]}<div><h1>${b.name}</h1><div class="gear">${b.gear}</div></div></div>
+    <button class="bean-line" id="bean-line">${bn ? beanLine(bn, b.kind === 'espresso') : '<span class="muted">No beans set · tap to scan the bag</span>'}</button>
+    ${b.kind === 'espresso' && bn ? (() => { const st = restStatus(bn, true); return !st ? '' : st.cls === 'old' ? '<p class="small bean-tip">Older beans give up their gas and run faster. If shots speed up, grind 0.1–0.2 finer.</p>' : st.cls === 'rest' ? '<p class="small bean-tip">Very fresh beans can taste sharp and gassy, and shots can be uneven. A few more days of rest usually helps.</p>' : ''; })() : ''}
+    ${b.kind === 'espresso' ? `<div class="humid" id="humid"></div>` : ''}
     <div class="grid">
       <section class="panel settings">
         <button class="set-head" id="set-toggle" aria-expanded="true" aria-controls="set-body">
@@ -601,14 +806,39 @@ function detail(id) {
   };
   const setSlider = k => { const el = $('r-' + k); if (el) el.value = s[k]; };
 
-  const effGrind = () => r1(clamp(s.grind + (shotSession.n >= 2 ? s.second : 0), b.p.grind[0], b.p.grind[1]));
+  const effGrind = () => r1(clamp(s.grind + (shotSession.n >= 2 ? s.second : 0) + (b.kind === 'espresso' ? humidOffset(s) : 0), b.p.grind[0], b.p.grind[1]));
+  let lastGrind = s.grind;
+  const renderHumid = () => {
+    const el = $('humid'); if (!el) return;
+    if (Humid.mode == null) {
+      el.innerHTML = `<p><b>Adjust the grind for humidity?</b> Damp days make shots run slower. This uses your location to get local humidity.</p>
+        <div class="shot-actions"><button class="btn sm" id="humid-on">Turn on</button><button class="btn ghost sm" id="humid-off">No thanks</button></div>`;
+      $('humid-on').onclick = async () => { LS.set('humid', 'on'); el.innerHTML = '<p class="small">Getting local humidity…</p>'; await Humid.refresh(true); if (s.rhRef == null && Humid.rh != null) { s.rhRef = Humid.rh; } paint(); };
+      $('humid-off').onclick = () => { LS.set('humid', 'off'); renderHumid(); };
+      return;
+    }
+    if (Humid.mode === 'off') { el.innerHTML = `<button class="linkbtn" id="humid-on2">Adjust grind for humidity</button>`; $('humid-on2').onclick = async () => { LS.set('humid', 'on'); await Humid.refresh(true); if (s.rhRef == null && Humid.rh != null) s.rhRef = Humid.rh; paint(); }; return; }
+    if (Humid.rh == null) { el.innerHTML = '<p class="small">Humidity: waiting for a reading…</p>'; return; }
+    const off = humidOffset(s);
+    el.innerHTML = `<p class="small"><b>Humidity ${Humid.rh}%</b>${s.rhRef != null ? ` · grind set at ${s.rhRef}%` : ''} · ${off ? `grind ${off > 0 ? '+' : ''}${off.toFixed(1)} today (${off > 0 ? 'more humid, a touch coarser' : 'drier, a touch finer'})` : 'no change needed'}
+      <button class="linkbtn" id="humid-off2">Turn off</button></p>`;
+    $('humid-off2').onclick = () => { LS.set('humid', 'off'); paint(); };
+  };
   const paint = (save = true) => {
     const d = derive(id, s);
     if (b.kind === 'espresso') {
       if (shotSession.n >= 2 && Date.now() - shotSession.last > 20 * 60000) shotSession.n = 1;
+      /* Setting the grind (dialling in) records today's humidity as the reference. */
+      if (s.grind !== lastGrind || (s.rhRef == null && Humid.mode === 'on' && Humid.rh != null)) { if (Humid.rh != null && Humid.mode === 'on') s.rhRef = Humid.rh; lastGrind = s.grind; }
       d.grind = effGrind().toFixed(1);
-      $('shotno').hidden = shotSession.n < 2;
-      $('shotno-txt').innerHTML = `Shot ${shotSession.n} · grind <b class="mono">${d.grind}</b> <span class="muted">(${s.grind.toFixed(1)} + ${s.second.toFixed(1)})</span>`;
+      const hOff = humidOffset(s);
+      let parts = s.grind.toFixed(1);
+      if (shotSession.n >= 2) parts += ` + ${s.second.toFixed(1)} 2nd shot`;
+      if (hOff) parts += ` ${hOff > 0 ? '+' : '−'} ${Math.abs(hOff).toFixed(1)} humidity`;
+      $('shotno').hidden = shotSession.n < 2 && !hOff;
+      $('shotno-txt').innerHTML = `${shotSession.n >= 2 ? `Shot ${shotSession.n} · ` : 'Today · '}grind <b class="mono">${d.grind}</b> <span class="muted">(${parts})</span>`;
+      $('shotno-reset').hidden = shotSession.n < 2;
+      renderHumid();
     }
     for (const k in b.p) setSlider(k);
     if ($('h-water')) $('h-water').textContent = `≈ ${Math.max(0, r0(d.water - 2 * d.dose))} ml in the cup`;
@@ -923,7 +1153,9 @@ function detail(id) {
   if (b.kind !== 'espresso') go.textContent = 'Start';
   $('rst').onclick = () => { timer.done = false; cdDone.clear(); $('nextstep').hidden = true; if (Scale.connected) Scale.send(0x06).catch(() => {}); resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
 
-  cur = { id, editing: false, applyRemote(rs) {
+  $('bean-line').onclick = () => openBeans(currentBean() || undefined);
+  if (b.kind === 'espresso') Humid.refresh();
+  cur = { id, editing: false, onHumid: () => paint(false), applyRemote(rs) {
     if (cur.editing || sameRec(id, rs, s)) return;
     recKeys(id).forEach(k => { s[k] = rs[k]; }); for (const k in b.p) setSlider(k);
     paint(false); showFix();
