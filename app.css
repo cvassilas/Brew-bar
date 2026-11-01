@@ -259,6 +259,14 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .bc-btns{display:flex;gap:8px}
 [class^=pill-]{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid currentColor}
 .pill-good{color:var(--ok)} .pill-rest{color:var(--crema)} .pill-old,.pill-warn{color:var(--warn)}
+.beans-card.list{flex-direction:column;align-items:stretch;gap:0;padding:12px 16px}
+.bc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.bean-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.bean-row:first-of-type{border-top:0}
+.bean-row .bc-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bean-row b{font-size:16px}
+.bean-row .small{margin:0}
+.bean-for{margin-top:8px}
 .bean-line{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:-6px 0 12px;font-size:14px}
 .bean-tip{margin:-4px 0 12px}
 .humid{margin:-4px 0 12px}

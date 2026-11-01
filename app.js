@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '2026.11.01.3';   /* keep in step with version.json */
+const APP_VERSION = '2026.11.01.4';   /* keep in step with version.json */
 /* Brew Bar — coffee recipes for the Timemore 064S, Bookoo Themis Ultra over Web Bluetooth, and GitHub-gist sync. */
 
 /* ---------- Icons ---------- */
@@ -135,7 +135,8 @@ const LS = {
 let DATA = LS.get('data', { recipes: {} });
 if (!DATA.recipes) DATA = { recipes: {} };
 if (!DATA.beans) DATA.beans = {};          /* bags of beans: {id: {roaster, name, roast, roastDate, link, updatedAt, deleted?}} */
-if (!('current' in DATA)) DATA.current = null;   /* {id, updatedAt} */
+if (!('current' in DATA)) DATA.current = null;   /* default bag for methods without their own: {id, updatedAt} */
+if (!DATA.assign) DATA.assign = {};               /* bag per method: {espresso: {id, updatedAt}, …} */
 
 /* Linked dose / water / ratio for ratio brewers: water is the anchor (how much coffee you want).
    Bean weight -> keeps water, ratio follows. Water or ratio -> bean weight follows. */
@@ -178,7 +179,7 @@ function derive(id, s) {
 }
 
 /* ---------- Gist sync ---------- */
-const syncPayload = () => JSON.stringify({ app: 'brew-bar', v: 2, recipes: DATA.recipes, beans: DATA.beans, current: DATA.current }, null, 1);
+const syncPayload = () => JSON.stringify({ app: 'brew-bar', v: 3, recipes: DATA.recipes, beans: DATA.beans, current: DATA.current, assign: DATA.assign }, null, 1);
 const Sync = {
   cfg: LS.get('sync', { token: '', gistId: '' }),
   state: 'off', msg: '', last: 0, timer: null, busy: false, FILE: 'brewbar.json',
@@ -214,6 +215,12 @@ const Sync = {
     const rc = remote && remote.current, lc = DATA.current;
     if (rc && (!lc || (rc.updatedAt || 0) > (lc.updatedAt || 0))) { DATA.current = rc; changed = true; }
     else if (lc && (!rc || (lc.updatedAt || 0) > (rc.updatedAt || 0))) localNewer = true;
+    const ra = (remote && remote.assign) || {};
+    for (const id of Object.keys(BREWERS)) {
+      const a = DATA.assign[id], b = ra[id];
+      if (b && (!a || (b.updatedAt || 0) > (a.updatedAt || 0))) { DATA.assign[id] = b; changed = true; }
+      else if (a && (!b || (a.updatedAt || 0) > (b.updatedAt || 0))) localNewer = true;
+    }
     if (changed) LS.set('data', DATA);
     return { changed, localNewer };
   },
@@ -501,7 +508,7 @@ function checkSharedGist() {
   $('follow-yes').onclick = async () => {
     clean(); $('follow-dlg').close();
     Sync.cfg = { token: '', gistId: id }; LS.set('sync', Sync.cfg);
-    DATA = { recipes: {}, beans: {}, current: null }; LS.set('data', DATA);
+    DATA = { recipes: {}, beans: {}, current: null, assign: {} }; LS.set('data', DATA);
     await Sync.run(false);
     onRemoteData();
     toast(Sync.state === 'err' ? Sync.msg : 'Following the shared recipes.');
@@ -513,7 +520,12 @@ const ROASTERS = ['Kiss the Hippo', 'Assembly', 'Square Mile', 'Origin', 'Worksh
   'Union', 'Monmouth', 'Colonna', 'Round Hill', 'Rave', 'Hasbean', 'Extract', 'Pact', 'Notes', 'Dog & Hat', 'Plot', 'Crankhouse', 'Girls Who Grind',
   'Curve', 'Modern Standard', 'Yallah', 'Clifton', 'Tim Wendelboe', 'La Cabra', 'Friedhats', 'Onyx', 'Sey', 'Manhattan', 'April', 'Nomad', 'Grind', 'Volcano', 'Redemption'];
 const beanList = () => Object.values(DATA.beans).filter(b => !b.deleted).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-const currentBean = () => (DATA.current && DATA.beans[DATA.current.id] && !DATA.beans[DATA.current.id].deleted) ? DATA.beans[DATA.current.id] : null;
+const liveBean = id => (id && DATA.beans[id] && !DATA.beans[id].deleted) ? DATA.beans[id] : null;
+const currentBean = () => liveBean(DATA.current && DATA.current.id);
+/* The bag a method uses: its own if one has been set, otherwise the default bag. */
+const beanFor = brewer => { const a = DATA.assign[brewer]; return a ? liveBean(a.id) : currentBean(); };
+const ALL_BREWERS = Object.keys(BREWERS);
+const isEspressoLike = id => id === 'espresso';
 function beanDays(bn) {
   if (!bn || !bn.roastDate) return null;
   const d = new Date(bn.roastDate + 'T00:00:00'); if (isNaN(d)) return null;
@@ -534,8 +546,13 @@ function beanLine(bn, forEspresso) {
   const st = restStatus(bn, forEspresso);
   return `${esc(beanTitle(bn))}${st ? ` <span class="pill-${st.cls}">day ${st.days} · ${st.label}</span>` : ''}`;
 }
-function saveBean(bn) {
-  bn.updatedAt = Date.now(); DATA.beans[bn.id] = bn; DATA.current = { id: bn.id, updatedAt: Date.now() };
+function assignBean(beanId, brewers) {
+  const now = Date.now();
+  brewers.forEach(id => { DATA.assign[id] = { id: beanId, updatedAt: now }; });
+  if (brewers.length === ALL_BREWERS.length) DATA.current = { id: beanId, updatedAt: now };
+}
+function saveBean(bn, brewers) {
+  bn.updatedAt = Date.now(); DATA.beans[bn.id] = bn; assignBean(bn.id, brewers);
   LS.set('data', DATA); Sync.schedule();
 }
 
@@ -610,9 +627,24 @@ async function scanBag(file, onStatus) {
   return { ...parsed, ...Object.fromEntries(Object.entries(found).filter(([, v]) => v)) , _text: data.text || '' };
 }
 
-let beanEditing = null;
-function openBeans(edit) {
+let beanEditing = null, beanFor_ = new Set(ALL_BREWERS);
+function renderBeanFor() {
+  const all = beanFor_.size === ALL_BREWERS.length;
+  $('bean-for').innerHTML = `<button type="button" class="chip" data-for="all" aria-pressed="${all}">All methods</button>` +
+    ALL_BREWERS.map(id => `<button type="button" class="chip" data-for="${id}" aria-pressed="${beanFor_.has(id)}">${BREWERS[id].name}</button>`).join('');
+  $('bean-for').querySelectorAll('[data-for]').forEach(el => el.onclick = () => {
+    const k = el.dataset.for;
+    if (k === 'all') beanFor_ = new Set(all ? [] : ALL_BREWERS);
+    else beanFor_.has(k) ? beanFor_.delete(k) : beanFor_.add(k);
+    renderBeanFor();
+  });
+}
+/* forIds: which methods the bag is for. From a brewer page, that brewer; from home, the methods already using it (or all). */
+function openBeans(edit, forIds) {
   beanEditing = edit ? { ...edit } : { id: 'b' + Date.now().toString(36) };
+  const using = edit ? ALL_BREWERS.filter(id => { const b = beanFor(id); return b && b.id === edit.id; }) : [];
+  beanFor_ = new Set(forIds || (using.length ? using : ALL_BREWERS));
+  renderBeanFor();
   const f = beanEditing;
   $('bean-roaster').value = f.roaster || ''; $('bean-name').value = f.name || ''; $('bean-date').value = f.roastDate || '';
   $('bean-roast').value = f.roast || ''; $('bean-link').value = f.link || '';
@@ -622,7 +654,8 @@ function openBeans(edit) {
   $('bean-list-wrap').hidden = !list.length;
   $('bean-list').innerHTML = list.map(b => `<button type="button" class="bag" data-bag="${b.id}"><b>${esc(beanTitle(b))}</b><span>${b.roastDate ? 'Roasted ' + new Date(b.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'No roast date'}</span></button>`).join('');
   $('bean-list').querySelectorAll('[data-bag]').forEach(el => el.onclick = () => {
-    DATA.current = { id: el.dataset.bag, updatedAt: Date.now() }; LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView(); toast('Beans changed.');
+    if (!beanFor_.size) { $('bean-status').textContent = 'Choose at least one method under “Use for”.'; return; }
+    assignBean(el.dataset.bag, [...beanFor_]); LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView(); toast('Beans changed.');
   });
   $('bean-dlg').showModal();
 }
@@ -647,12 +680,14 @@ $('bean-save').onclick = () => {
   f.roaster = $('bean-roaster').value.trim(); f.name = $('bean-name').value.trim(); f.roastDate = $('bean-date').value;
   f.roast = $('bean-roast').value; f.link = $('bean-link').value.trim(); delete f.deleted;
   if (!f.roaster && !f.name && !f.roastDate) { $('bean-status').textContent = 'Add at least a name or a roast date.'; return; }
-  saveBean(f); $('bean-dlg').close(); refreshView(); toast('Beans saved.');
+  if (!beanFor_.size) { $('bean-status').textContent = 'Choose at least one method under “Use for”.'; return; }
+  saveBean(f, [...beanFor_]); $('bean-dlg').close(); refreshView(); toast('Beans saved.');
 };
 $('bean-del').onclick = () => {
   const f = beanEditing; if (!DATA.beans[f.id]) { $('bean-dlg').close(); return; }
   DATA.beans[f.id] = { id: f.id, deleted: true, updatedAt: Date.now() };
   if (DATA.current && DATA.current.id === f.id) DATA.current = { id: null, updatedAt: Date.now() };
+  for (const id of ALL_BREWERS) if (DATA.assign[id] && DATA.assign[id].id === f.id) DATA.assign[id] = { id: null, updatedAt: Date.now() };
   LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView();
 };
 const refreshView = () => { if (cur) { const id = cur.id; detail(id); } else home(); };
@@ -704,13 +739,22 @@ function home() {
   const app = $('app');
   app.innerHTML = `<div class="mast"><span class="label">Coffee recipes</span><h1>Brew Bar</h1>
     <p>Six brewers, dialled in for the Timemore 064S. Connect the Themis Ultra for live weight, auto-start and stop-shot alerts.</p></div>
-    ${(() => { const bn = currentBean();
-      return bn ? `<section class="beans-card"><div class="bc-main"><span class="label">Beans</span><b>${esc(beanTitle(bn))}</b>
-          <span class="small">${bn.roastDate ? `Roasted ${new Date(bn.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'No roast date'}${bn.roast ? ` · ${bn.roast} roast` : ''}</span>
-          <div class="bc-pills">${[['Espresso', true], ['Filter', false]].map(([n, e]) => { const st = restStatus(bn, e); return st ? `<span class="pill-${st.cls}">${n}: ${st.label}</span>` : ''; }).join('')}</div></div>
-          <div class="bc-btns"><button class="btn ghost sm" id="bean-edit">Edit</button><button class="btn sm" id="bean-new">New bag</button></div></section>`
-        : `<section class="beans-card empty"><div class="bc-main"><span class="label">Beans</span><b>What are you brewing?</b><span class="small">Scan the bag to track the roast date and how well rested the beans are.</span></div>
-          <div class="bc-btns"><button class="btn sm" id="bean-new">Scan beans</button></div></section>`; })()}
+    ${(() => {
+      const groups = new Map();
+      ALL_BREWERS.forEach(id => { const bn = beanFor(id), k = bn ? bn.id : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); });
+      if (groups.size === 1 && groups.has('')) return `<section class="beans-card empty"><div class="bc-main"><span class="label">Beans</span><b>What are you brewing?</b><span class="small">Scan the bag to track the roast date and how well rested the beans are. You can use different beans for different methods.</span></div>
+          <div class="bc-btns"><button class="btn sm" id="bean-new">Scan beans</button></div></section>`;
+      const rows = [...groups.entries()].sort((a, b) => (a[0] === '') - (b[0] === '')).map(([k, ids]) => {
+        const bn = liveBean(k), names = ids.length === ALL_BREWERS.length ? 'All methods' : ids.map(id => BREWERS[id].name).join(' · ');
+        if (!bn) return `<div class="bean-row"><div class="bc-main"><b class="muted">No beans set</b><span class="small">${names}</span></div><button class="btn ghost sm" data-bean-set="${ids.join(',')}">Set</button></div>`;
+        const kinds = [ids.some(isEspressoLike) ? ['Espresso', true] : null, ids.some(id => !isEspressoLike(id)) ? ['Filter', false] : null].filter(Boolean);
+        const pills = kinds.map(([n, e]) => { const st = restStatus(bn, e); return st ? `<span class="pill-${st.cls}">${kinds.length > 1 ? n + ': ' : ''}day ${st.days} · ${st.label}</span>` : ''; }).join('');
+        return `<div class="bean-row"><div class="bc-main"><b>${esc(beanTitle(bn))}</b>
+            <span class="small">${names} · ${bn.roastDate ? `roasted ${new Date(bn.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'no roast date'}${bn.roast ? ` · ${bn.roast}` : ''}</span>
+            <div class="bc-pills">${pills}</div></div><button class="btn ghost sm" data-bean-edit="${bn.id}">Edit</button></div>`;
+      }).join('');
+      return `<section class="beans-card list"><div class="bc-head"><span class="label">Beans</span><button class="btn sm" id="bean-new">New bag</button></div>${rows}</section>`;
+    })()}
     <div class="rack">${Object.entries(BREWERS).map(([id, b]) => {
       const d = derive(id, stateFor(id));
       const [n, u] = b.kind === 'espresso' ? [d.out, 'g out'] : [d.water, 'g water'];
@@ -732,7 +776,8 @@ function home() {
     app.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
   $('bean-new').onclick = () => openBeans();
-  if ($('bean-edit')) $('bean-edit').onclick = () => openBeans(currentBean());
+  app.querySelectorAll('[data-bean-edit]').forEach(el => el.onclick = () => openBeans(liveBean(el.dataset.beanEdit)));
+  app.querySelectorAll('[data-bean-set]').forEach(el => el.onclick = () => openBeans(undefined, el.dataset.beanSet.split(',')));
 }
 
 function detail(id) {
@@ -758,7 +803,7 @@ function detail(id) {
     `<button class="chip" data-sugar="${v}">${n} · ${d}</button>`).join('')}</div></div>` : '';
   const armLabel = b.kind === 'espresso' ? 'Tare · start on first drops' : 'Tare · start on pour';
 
-  const bn = currentBean();
+  const bn = beanFor(id);
   app.innerHTML = `<div class="head">${ICON[id]}<div><h1>${b.name}</h1><div class="gear">${b.gear}</div></div></div>
     <button class="bean-line" id="bean-line">${bn ? beanLine(bn, b.kind === 'espresso') : '<span class="muted">No beans set · tap to scan the bag</span>'}</button>
     ${b.kind === 'espresso' && bn ? (() => { const st = restStatus(bn, true); return !st ? '' : st.cls === 'old' ? '<p class="small bean-tip">Older beans give up their gas and run faster. If shots speed up, grind 0.1–0.2 finer.</p>' : st.cls === 'rest' ? '<p class="small bean-tip">Very fresh beans can taste sharp and gassy, and shots can be uneven. A few more days of rest usually helps.</p>' : ''; })() : ''}
@@ -1158,7 +1203,7 @@ function detail(id) {
   if (b.kind !== 'espresso') go.textContent = 'Start';
   $('rst').onclick = () => { timer.done = false; cdDone.clear(); $('nextstep').hidden = true; if (Scale.connected) Scale.send(0x06).catch(() => {}); resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
 
-  $('bean-line').onclick = () => openBeans(currentBean() || undefined);
+  $('bean-line').onclick = () => openBeans(beanFor(id) || undefined, [id]);
   if (b.kind === 'espresso') Humid.refresh();
   cur = { id, editing: false, onHumid: () => paint(false), applyRemote(rs) {
     if (cur.editing || sameRec(id, rs, s)) return;
