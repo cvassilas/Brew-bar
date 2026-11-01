@@ -121,11 +121,20 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .weight small{font-size:16px;color:var(--muted)}
 .flow{font-family:var(--f-mono);font-size:14px;color:var(--muted);text-align:right}
 .flow b{color:var(--ink);font-weight:500;font-size:18px}
-.pace{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--crema-soft);border-left:6px solid var(--muted)}
-.pace-main{font-family:var(--f-display);font-weight:800;font-size:26px;line-height:1.1}
-.pace-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.pace{margin:0 0 12px;padding:14px 16px;border-radius:12px;background:var(--crema-soft);border-left:8px solid var(--muted)}
+.pace-main{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,8vw,36px);line-height:1.1;margin-top:2px}
+.pace-phase{margin:0}
+.pace-sub{font-size:14px;color:var(--ink);margin-top:6px}
 .pace[data-state=good]{border-left-color:var(--ok)} .pace[data-state=good] .pace-main{color:var(--ok)}
 .pace[data-state=slow],.pace[data-state=stop]{border-left-color:var(--warn)} .pace[data-state=slow] .pace-main,.pace[data-state=stop] .pace-main{color:var(--warn)}
+.pace[data-state=ready]{border-left-color:var(--ok);animation:readyPulse 1.4s ease-in-out infinite} .pace[data-state=ready] .pace-main{color:var(--ok)}
+.pace[data-state=next]{border-left-color:var(--crema)}
+.pace[data-state=soon]{border-left-color:var(--crema)} .pace[data-state=soon] .pace-main{color:var(--crema);font-size:clamp(40px,12vw,56px)}
+@keyframes readyPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--ok) 0%, transparent)}50%{box-shadow:0 0 0 6px color-mix(in srgb, var(--ok) 30%, transparent)}}
+.prep-step.next,.btn.next{box-shadow:0 0 0 3px var(--crema)}
+.nextstep{display:flex;align-items:center;gap:14px;margin:0 0 12px;padding:12px 14px;border-radius:12px;border:2px solid var(--crema);font-size:15px}
+.nextstep .cd-n{font-size:34px;font-weight:500;color:var(--crema);min-width:1.6em;text-align:center}
+.nextstep.go{background:var(--crema-soft)}
 .pace[data-state=fast]{border-left-color:var(--crema)} .pace[data-state=fast] .pace-main{color:var(--crema)}
 .target{margin-top:12px;font-size:14px}
 .target .bar{margin-top:6px}
@@ -242,4 +251,4 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .share-opt{flex-direction:row;align-items:center;gap:14px;width:100%}
 .share-opt .pt{display:flex;flex-direction:column;gap:2px}
 .qr-mini{width:34px;height:34px;flex:none;border-radius:6px;background:#FFFFFF url(icons/qr.svg) center/90% no-repeat;border:1px solid var(--line)}
-@media (prefers-reduced-motion: reduce){*{transition:none!important}.sf-pulse{animation:none}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}.pace{animation:none!important}.sf-pulse{animation:none}}
