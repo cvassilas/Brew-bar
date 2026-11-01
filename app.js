@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '2026.11.01.4';   /* keep in step with version.json */
+const APP_VERSION = '2026.11.01.5';   /* keep in step with version.json */
 /* Brew Bar — coffee recipes for the Timemore 064S, Bookoo Themis Ultra over Web Bluetooth, and GitHub-gist sync. */
 
 /* ---------- Icons ---------- */
@@ -402,6 +402,7 @@ function beep(n = 2) {
 function toast(msg) {
   let t = $('global-toast');
   if (!t) { t = document.createElement('p'); t.id = 'global-toast'; t.className = 'toast'; t.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);padding:10px 14px;border-radius:10px;z-index:50;max-width:calc(100vw - 32px)'; document.body.appendChild(t); }
+  const host = document.querySelector('dialog[open]') || document.body; if (t.parentNode !== host) host.appendChild(t);
   const ub = $('update-bar'); t.style.bottom = ub && !ub.hidden ? 'calc(88px + env(safe-area-inset-bottom,0px))' : 'calc(16px + env(safe-area-inset-bottom,0px))';
   t.textContent = msg; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 3500);
 }
@@ -519,8 +520,11 @@ function checkSharedGist() {
 const ROASTERS = ['Kiss the Hippo', 'Assembly', 'Square Mile', 'Origin', 'Workshop', 'Dark Arts', 'Caravan', 'Ozone', 'Climpson', 'Allpress',
   'Union', 'Monmouth', 'Colonna', 'Round Hill', 'Rave', 'Hasbean', 'Extract', 'Pact', 'Notes', 'Dog & Hat', 'Plot', 'Crankhouse', 'Girls Who Grind',
   'Curve', 'Modern Standard', 'Yallah', 'Clifton', 'Tim Wendelboe', 'La Cabra', 'Friedhats', 'Onyx', 'Sey', 'Manhattan', 'April', 'Nomad', 'Grind', 'Volcano', 'Redemption'];
-const beanList = () => Object.values(DATA.beans).filter(b => !b.deleted).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-const liveBean = id => (id && DATA.beans[id] && !DATA.beans[id].deleted) ? DATA.beans[id] : null;
+const beanList = () => Object.values(DATA.beans).filter(b => !b.deleted && !b.retired).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+const retiredList = () => Object.values(DATA.beans).filter(b => !b.deleted && b.retired).sort((a, b) => (b.retiredAt || 0) - (a.retiredAt || 0));
+const sameCoffee = (a, b) => { const n = x => (x || '').toLowerCase().replace(/[^a-z0-9]/g, ''); return n(a.name) && n(a.name) === n(b.name) && n(a.roaster) === n(b.roaster); };
+const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+const liveBean = id => (id && DATA.beans[id] && !DATA.beans[id].deleted && !DATA.beans[id].retired) ? DATA.beans[id] : null;
 const currentBean = () => liveBean(DATA.current && DATA.current.id);
 /* The bag a method uses: its own if one has been set, otherwise the default bag. */
 const beanFor = brewer => { const a = DATA.assign[brewer]; return a ? liveBean(a.id) : currentBean(); };
@@ -627,7 +631,76 @@ async function scanBag(file, onStatus) {
   return { ...parsed, ...Object.fromEntries(Object.entries(found).filter(([, v]) => v)) , _text: data.text || '' };
 }
 
-let beanEditing = null, beanFor_ = new Set(ALL_BREWERS);
+const methodsUsing = beanId => ALL_BREWERS.filter(id => { const b = beanFor(id); return b && b.id === beanId; });
+const methodNames = ids => ids.length === ALL_BREWERS.length ? 'All methods' : ids.map(id => BREWERS[id].name).join(' · ');
+const persist = () => { LS.set('data', DATA); Sync.schedule(); };
+
+/* ---------- Bean library (pick, retire, restock) ---------- */
+let libFor = null;   /* null = manage; array of brewer ids = choosing beans for those methods */
+function openLibrary(forIds) {
+  libFor = forIds && forIds.length ? forIds : null;
+  renderLibrary(); if (!$('lib-dlg').open) $('lib-dlg').showModal();
+}
+function renderLibrary() {
+  const picking = !!libFor;
+  $('lib-title').textContent = picking ? `Beans for ${methodNames(libFor)}` : 'Your beans';
+  $('lib-sub').textContent = picking ? 'Tap a bag to use it.' : 'Bags you have now. Mark them finished when they run out.';
+  const active = beanList();
+  const mine = picking ? (beanFor(libFor[0]) || {}).id : null;
+  $('lib-active').innerHTML = active.length ? active.map(bn => {
+    const st = restStatus(bn, picking ? libFor.some(isEspressoLike) && libFor.every(isEspressoLike) : false), used = methodsUsing(bn.id);
+    return `<div class="lib-row${bn.id === mine ? ' on' : ''}">
+      <button type="button" class="lib-main" data-lib-use="${bn.id}">
+        <b>${esc(beanTitle(bn))}</b>
+        <span class="small">${bn.roastDate ? `Roasted ${fmtDate(bn.roastDate)}` : 'No roast date'}${st ? ` · day ${st.days}` : ''}${used.length ? ` · ${methodNames(used)}` : ' · not in use'}</span>
+        ${st ? `<span class="pill-${st.cls}">${st.label}</span>` : ''}
+        ${picking ? `<span class="lib-use">${bn.id === mine ? '✓ In use' : 'Use'}</span>` : ''}
+      </button>
+      <div class="lib-acts"><button type="button" class="linkbtn" data-lib-fresh="${bn.id}">New roast date</button><button type="button" class="linkbtn" data-lib-edit="${bn.id}">Edit</button><button type="button" class="linkbtn" data-lib-done="${bn.id}">Finished</button></div>
+    </div>`; }).join('') : '<p class="small">No bags yet. Add one below.</p>';
+  const old = retiredList();
+  $('lib-old').hidden = !old.length;
+  $('lib-old-n').textContent = old.length;
+  $('lib-retired').innerHTML = old.map(bn => `<div class="lib-row old"><div class="lib-main static"><b>${esc(beanTitle(bn))}</b>
+      <span class="small">Last roast ${bn.roastDate ? fmtDate(bn.roastDate) : 'unknown'}${bn.retiredAt ? ` · finished ${new Date(bn.retiredAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</span></div>
+      <div class="lib-acts"><button type="button" class="btn sm" data-lib-restock="${bn.id}">Restock</button><button type="button" class="linkbtn" data-lib-del="${bn.id}">Delete</button></div></div>`).join('');
+  const q = sel => $('lib-dlg').querySelectorAll(sel);
+  q('[data-lib-use]').forEach(el => el.onclick = () => {
+    if (!libFor) { openBeans(DATA.beans[el.dataset.libUse]); return; }
+    assignBean(el.dataset.libUse, libFor); persist(); $('lib-dlg').close(); refreshView(); toast(`Using ${beanTitle(DATA.beans[el.dataset.libUse])}.`);
+  });
+  q('[data-lib-edit]').forEach(el => el.onclick = () => openBeans(DATA.beans[el.dataset.libEdit]));
+  q('[data-lib-fresh]').forEach(el => el.onclick = () => openBeans(DATA.beans[el.dataset.libFresh], null, 'fresh'));
+  q('[data-lib-restock]').forEach(el => el.onclick = () => openBeans(DATA.beans[el.dataset.libRestock], libFor || (DATA.beans[el.dataset.libRestock].lastUsedFor || ALL_BREWERS), 'fresh'));
+  q('[data-lib-done]').forEach(el => el.onclick = () => retireBean(el.dataset.libDone));
+  q('[data-lib-del]').forEach(el => el.onclick = () => { const id = el.dataset.libDel; DATA.beans[id] = { id, deleted: true, updatedAt: Date.now() }; persist(); renderLibrary(); });
+}
+function retireBean(id) {
+  const bn = DATA.beans[id]; if (!bn) return;
+  const used = methodsUsing(id), before = JSON.parse(JSON.stringify({ assign: DATA.assign, current: DATA.current }));
+  const now = Date.now();
+  bn.retired = true; bn.retiredAt = now; bn.updatedAt = now; bn.lastUsedFor = used;
+  used.forEach(m => { DATA.assign[m] = { id: null, updatedAt: now }; });
+  if (DATA.current && DATA.current.id === id) DATA.current = { id: null, updatedAt: now };
+  persist(); renderLibrary(); refreshView();
+  toastAction(`${beanTitle(bn)} finished.${used.length ? ' Choose new beans for ' + methodNames(used) + '.' : ''}`, 'Undo', () => {
+    bn.retired = false; delete bn.retiredAt; bn.updatedAt = Date.now();
+    DATA.assign = before.assign; DATA.current = before.current;
+    Object.values(DATA.assign).forEach(a => a.updatedAt = Date.now());
+    persist(); if ($('lib-dlg').open) renderLibrary(); refreshView();
+  });
+}
+function toastAction(msg, label, fn) {
+  toast(msg);
+  const t = $('global-toast'); const b = document.createElement('button'); b.className = 'linkbtn'; b.textContent = label; b.style.marginLeft = '10px';
+  b.onclick = () => { t.hidden = true; fn(); }; t.appendChild(b);
+  clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 7000);
+}
+$('lib-close').onclick = () => $('lib-dlg').close();
+$('lib-add').onclick = () => openBeans(undefined, libFor);
+
+/* ---------- Bean editor (new bag, edit, fresh roast) ---------- */
+let beanEditing = null, beanMode = 'new', beanFor_ = new Set(ALL_BREWERS);
 function renderBeanFor() {
   const all = beanFor_.size === ALL_BREWERS.length;
   $('bean-for').innerHTML = `<button type="button" class="chip" data-for="all" aria-pressed="${all}">All methods</button>` +
@@ -639,25 +712,22 @@ function renderBeanFor() {
     renderBeanFor();
   });
 }
-/* forIds: which methods the bag is for. From a brewer page, that brewer; from home, the methods already using it (or all). */
-function openBeans(edit, forIds) {
+/* mode: 'new' | 'edit' | 'fresh' (same coffee, new bag: only the roast date changes) */
+function openBeans(edit, forIds, mode) {
+  beanMode = mode || (edit ? 'edit' : 'new');
   beanEditing = edit ? { ...edit } : { id: 'b' + Date.now().toString(36) };
-  const using = edit ? ALL_BREWERS.filter(id => { const b = beanFor(id); return b && b.id === edit.id; }) : [];
-  beanFor_ = new Set(forIds || (using.length ? using : ALL_BREWERS));
+  const f = beanEditing, used = edit ? methodsUsing(edit.id) : [];
+  beanFor_ = new Set(forIds || (used.length ? used : (beanMode === 'new' ? ALL_BREWERS : [])));
   renderBeanFor();
-  const f = beanEditing;
-  $('bean-roaster').value = f.roaster || ''; $('bean-name').value = f.name || ''; $('bean-date').value = f.roastDate || '';
+  $('bean-title').textContent = beanMode === 'fresh' ? 'Fresh bag' : beanMode === 'edit' ? 'Edit beans' : 'New bag';
+  $('bean-roaster').value = f.roaster || ''; $('bean-name').value = f.name || '';
+  $('bean-date').value = beanMode === 'fresh' ? '' : (f.roastDate || '');
   $('bean-roast').value = f.roast || ''; $('bean-link').value = f.link || '';
-  $('bean-status').textContent = edit ? '' : 'Take a photo of the bag. The roast date, roaster and roast level are read where they can be. Check them before saving.';
-  $('bean-del').hidden = !edit;
-  const list = beanList().filter(b => b.id !== f.id);
-  $('bean-list-wrap').hidden = !list.length;
-  $('bean-list').innerHTML = list.map(b => `<button type="button" class="bag" data-bag="${b.id}"><b>${esc(beanTitle(b))}</b><span>${b.roastDate ? 'Roasted ' + new Date(b.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'No roast date'}</span></button>`).join('');
-  $('bean-list').querySelectorAll('[data-bag]').forEach(el => el.onclick = () => {
-    if (!beanFor_.size) { $('bean-status').textContent = 'Choose at least one method under “Use for”.'; return; }
-    assignBean(el.dataset.bag, [...beanFor_]); LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView(); toast('Beans changed.');
-  });
+  $('bean-status').textContent = beanMode === 'fresh' ? `Same coffee, new bag. Scan it or enter the new roast date${f.roastDate ? ` (last bag: ${fmtDate(f.roastDate)})` : ''}.`
+    : beanMode === 'edit' ? '' : 'Take a photo of the bag. The roast date, roaster and roast level are read where they can be. Check them before saving.';
+  $('bean-save').textContent = beanMode === 'edit' ? 'Save' : 'Use these beans';
   $('bean-dlg').showModal();
+  if (beanMode === 'fresh') setTimeout(() => $('bean-date').focus(), 50);
 }
 $('bean-photo').onchange = async e => {
   const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
@@ -667,8 +737,8 @@ $('bean-photo').onchange = async e => {
     if (r.roaster && !$('bean-roaster').value) $('bean-roaster').value = r.roaster;
     if (r.name && !$('bean-name').value) $('bean-name').value = r.name;
     if (r.roastDate) $('bean-date').value = r.roastDate;
-    if (r.roast) $('bean-roast').value = r.roast;
-    if (r.link) $('bean-link').value = r.link;
+    if (r.roast && !$('bean-roast').value) $('bean-roast').value = r.roast;
+    if (r.link && !$('bean-link').value) $('bean-link').value = r.link;
     const got = ['roaster', 'name', 'roastDate', 'roast', 'link'].filter(k => r[k]);
     st.textContent = got.length ? `Found: ${got.map(k => ({ roaster: 'roaster', name: 'coffee name', roastDate: 'roast date', roast: 'roast level', link: 'QR link' })[k]).join(', ')}. Check and correct anything wrong.`
       : 'Couldn\'t read much from that photo. Try closer, in good light, with the label flat, or type the details.';
@@ -676,19 +746,30 @@ $('bean-photo').onchange = async e => {
 };
 $('bean-cancel').onclick = () => $('bean-dlg').close();
 $('bean-save').onclick = () => {
-  const f = beanEditing;
-  f.roaster = $('bean-roaster').value.trim(); f.name = $('bean-name').value.trim(); f.roastDate = $('bean-date').value;
-  f.roast = $('bean-roast').value; f.link = $('bean-link').value.trim(); delete f.deleted;
-  if (!f.roaster && !f.name && !f.roastDate) { $('bean-status').textContent = 'Add at least a name or a roast date.'; return; }
-  if (!beanFor_.size) { $('bean-status').textContent = 'Choose at least one method under “Use for”.'; return; }
-  saveBean(f, [...beanFor_]); $('bean-dlg').close(); refreshView(); toast('Beans saved.');
-};
-$('bean-del').onclick = () => {
-  const f = beanEditing; if (!DATA.beans[f.id]) { $('bean-dlg').close(); return; }
-  DATA.beans[f.id] = { id: f.id, deleted: true, updatedAt: Date.now() };
-  if (DATA.current && DATA.current.id === f.id) DATA.current = { id: null, updatedAt: Date.now() };
-  for (const id of ALL_BREWERS) if (DATA.assign[id] && DATA.assign[id].id === f.id) DATA.assign[id] = { id: null, updatedAt: Date.now() };
-  LS.set('data', DATA); Sync.schedule(); $('bean-dlg').close(); refreshView();
+  let f = beanEditing;
+  const vals = { roaster: $('bean-roaster').value.trim(), name: $('bean-name').value.trim(), roastDate: $('bean-date').value, roast: $('bean-roast').value, link: $('bean-link').value.trim() };
+  if (!vals.roaster && !vals.name && !vals.roastDate) { $('bean-status').textContent = 'Add at least a name or a roast date.'; return; }
+  if (beanMode !== 'edit' && !beanFor_.size) { $('bean-status').textContent = 'Choose at least one method under “Use for”.'; return; }
+  let msg = 'Beans saved.';
+  /* A new bag of a coffee already in the library updates that bag instead of adding a duplicate. */
+  if (beanMode === 'new') {
+    const match = Object.values(DATA.beans).find(b => !b.deleted && sameCoffee(b, vals));
+    if (match) { f = { ...match }; beanMode = 'fresh'; vals.roaster = match.roaster; vals.name = match.name; vals.roast = vals.roast || match.roast; vals.link = vals.link || match.link;
+      msg = vals.roastDate && vals.roastDate !== match.roastDate ? `Updated ${beanTitle(match)} with the new roast date.` : `${beanTitle(match)} is already in your library.`; }
+  }
+  if (beanMode === 'fresh' && f.roastDate && vals.roastDate && f.roastDate !== vals.roastDate) {
+    f.history = [...(f.history || []), { roastDate: f.roastDate, until: new Date().toISOString().slice(0, 10) }].slice(-20);
+    if (msg === 'Beans saved.') msg = `Fresh bag: roasted ${fmtDate(vals.roastDate)}.`;
+  }
+  Object.assign(f, vals); delete f.deleted; delete f.retired; delete f.retiredAt;
+  if (beanMode === 'edit') {
+    f.updatedAt = Date.now(); DATA.beans[f.id] = f;
+    const before = methodsUsing(f.id), now = Date.now();
+    ALL_BREWERS.forEach(m => { if (beanFor_.has(m) && !before.includes(m)) DATA.assign[m] = { id: f.id, updatedAt: now };
+      else if (!beanFor_.has(m) && before.includes(m)) DATA.assign[m] = { id: null, updatedAt: now }; });
+    persist();
+  } else saveBean(f, [...beanFor_]);
+  $('bean-dlg').close(); if ($('lib-dlg').open) $('lib-dlg').close(); refreshView(); toast(msg);
 };
 const refreshView = () => { if (cur) { const id = cur.id; detail(id); } else home(); };
 
@@ -743,17 +824,17 @@ function home() {
       const groups = new Map();
       ALL_BREWERS.forEach(id => { const bn = beanFor(id), k = bn ? bn.id : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); });
       if (groups.size === 1 && groups.has('')) return `<section class="beans-card empty"><div class="bc-main"><span class="label">Beans</span><b>What are you brewing?</b><span class="small">Scan the bag to track the roast date and how well rested the beans are. You can use different beans for different methods.</span></div>
-          <div class="bc-btns"><button class="btn sm" id="bean-new">Scan beans</button></div></section>`;
+          <div class="bc-btns">${Object.values(DATA.beans).some(b => !b.deleted) ? '<button class="btn ghost sm" id="bean-lib">Library</button>' : ''}<button class="btn sm" id="bean-new">Scan beans</button></div></section>`;
       const rows = [...groups.entries()].sort((a, b) => (a[0] === '') - (b[0] === '')).map(([k, ids]) => {
         const bn = liveBean(k), names = ids.length === ALL_BREWERS.length ? 'All methods' : ids.map(id => BREWERS[id].name).join(' · ');
-        if (!bn) return `<div class="bean-row"><div class="bc-main"><b class="muted">No beans set</b><span class="small">${names}</span></div><button class="btn ghost sm" data-bean-set="${ids.join(',')}">Set</button></div>`;
+        if (!bn) return `<div class="bean-row"><div class="bc-main"><b class="muted">No beans set</b><span class="small">${names}</span></div><button class="btn sm" data-bean-set="${ids.join(',')}">Choose</button></div>`;
         const kinds = [ids.some(isEspressoLike) ? ['Espresso', true] : null, ids.some(id => !isEspressoLike(id)) ? ['Filter', false] : null].filter(Boolean);
         const pills = kinds.map(([n, e]) => { const st = restStatus(bn, e); return st ? `<span class="pill-${st.cls}">${kinds.length > 1 ? n + ': ' : ''}day ${st.days} · ${st.label}</span>` : ''; }).join('');
         return `<div class="bean-row"><div class="bc-main"><b>${esc(beanTitle(bn))}</b>
             <span class="small">${names} · ${bn.roastDate ? `roasted ${new Date(bn.roastDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'no roast date'}${bn.roast ? ` · ${bn.roast}` : ''}</span>
-            <div class="bc-pills">${pills}</div></div><button class="btn ghost sm" data-bean-edit="${bn.id}">Edit</button></div>`;
+            <div class="bc-pills">${pills}</div></div><button class="btn ghost sm" data-bean-set="${ids.join(',')}">Change</button></div>`;
       }).join('');
-      return `<section class="beans-card list"><div class="bc-head"><span class="label">Beans</span><button class="btn sm" id="bean-new">New bag</button></div>${rows}</section>`;
+      return `<section class="beans-card list"><div class="bc-head"><span class="label">Beans</span><div class="bc-btns"><button class="btn ghost sm" id="bean-lib">Library</button><button class="btn sm" id="bean-new">New bag</button></div></div>${rows}</section>`;
     })()}
     <div class="rack">${Object.entries(BREWERS).map(([id, b]) => {
       const d = derive(id, stateFor(id));
@@ -776,8 +857,8 @@ function home() {
     app.querySelectorAll('[data-mode-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
   $('bean-new').onclick = () => openBeans();
-  app.querySelectorAll('[data-bean-edit]').forEach(el => el.onclick = () => openBeans(liveBean(el.dataset.beanEdit)));
-  app.querySelectorAll('[data-bean-set]').forEach(el => el.onclick = () => openBeans(undefined, el.dataset.beanSet.split(',')));
+  if ($('bean-lib')) $('bean-lib').onclick = () => openLibrary();
+  app.querySelectorAll('[data-bean-set]').forEach(el => el.onclick = () => { const ids = el.dataset.beanSet.split(','); beanList().length ? openLibrary(ids) : openBeans(undefined, ids); });
 }
 
 function detail(id) {
@@ -805,7 +886,7 @@ function detail(id) {
 
   const bn = beanFor(id);
   app.innerHTML = `<div class="head">${ICON[id]}<div><h1>${b.name}</h1><div class="gear">${b.gear}</div></div></div>
-    <button class="bean-line" id="bean-line">${bn ? beanLine(bn, b.kind === 'espresso') : '<span class="muted">No beans set · tap to scan the bag</span>'}</button>
+    <button class="bean-line" id="bean-line">${bn ? beanLine(bn, b.kind === 'espresso') : '<span class="muted">No beans set · tap to choose</span>'}</button>
     ${b.kind === 'espresso' && bn ? (() => { const st = restStatus(bn, true); return !st ? '' : st.cls === 'old' ? '<p class="small bean-tip">Older beans give up their gas and run faster. If shots speed up, grind 0.1–0.2 finer.</p>' : st.cls === 'rest' ? '<p class="small bean-tip">Very fresh beans can taste sharp and gassy, and shots can be uneven. A few more days of rest usually helps.</p>' : ''; })() : ''}
     ${b.kind === 'espresso' ? `<div class="humid" id="humid"></div>` : ''}
     <div class="grid">
@@ -1203,7 +1284,7 @@ function detail(id) {
   if (b.kind !== 'espresso') go.textContent = 'Start';
   $('rst').onclick = () => { timer.done = false; cdDone.clear(); $('nextstep').hidden = true; if (Scale.connected) Scale.send(0x06).catch(() => {}); resetPrep(); stopTimer(); timer.elapsed = 0; arm = false; $('arm').textContent = armLabel; go.textContent = 'Start'; $('result').hidden = true; $('shot').hidden = true; tick(); };
 
-  $('bean-line').onclick = () => openBeans(beanFor(id) || undefined, [id]);
+  $('bean-line').onclick = () => beanList().length ? openLibrary([id]) : openBeans(undefined, [id]);
   if (b.kind === 'espresso') Humid.refresh();
   cur = { id, editing: false, onHumid: () => paint(false), applyRemote(rs) {
     if (cur.editing || sameRec(id, rs, s)) return;

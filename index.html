@@ -74,9 +74,20 @@
   </form>
 </dialog>
 
+<dialog id="lib-dlg">
+  <form method="dialog" class="dlg lib">
+    <h2 id="lib-title">Your beans</h2>
+    <p class="small" id="lib-sub"></p>
+    <div class="libs" id="lib-active"></div>
+    <button type="button" class="btn ghost" id="lib-add" style="margin-top:12px;align-self:flex-start">Add a new bag</button>
+    <details class="lib-old" id="lib-old" hidden><summary>Finished bags (<span id="lib-old-n">0</span>)</summary><div class="libs" id="lib-retired"></div></details>
+    <div class="row end"><button type="button" class="btn" id="lib-close">Done</button></div>
+  </form>
+</dialog>
+
 <dialog id="bean-dlg">
   <form method="dialog" class="dlg bean">
-    <h2>Beans</h2>
+    <h2 id="bean-title">New bag</h2>
     <label class="btn scan-btn" for="bean-photo">Scan the bag</label>
     <input type="file" id="bean-photo" accept="image/*" capture="environment" hidden>
     <p class="small" id="bean-status" role="status"></p>
@@ -94,11 +105,9 @@
     <span class="label" style="margin-top:14px">Use for</span>
     <div class="chips bean-for" id="bean-for" role="group" aria-label="Methods that use these beans"></div>
     <div class="row end">
-      <button type="button" class="btn ghost" id="bean-del" hidden>Remove</button>
       <button type="button" class="btn ghost" id="bean-cancel">Cancel</button>
       <button type="button" class="btn" id="bean-save">Use these beans</button>
     </div>
-    <div id="bean-list-wrap" hidden><h3 class="label" style="margin:18px 0 8px">Or switch to a previous bag</h3><div class="bags" id="bean-list"></div></div>
   </form>
 </dialog>
 

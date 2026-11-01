@@ -1,4 +1,4 @@
 {
-  "version": "2026.11.01.4",
-  "notes": "Use different beans for different methods"
+  "version": "2026.11.01.5",
+  "notes": "Bean library: pick from your bags, mark finished, restock with a new roast date"
 }

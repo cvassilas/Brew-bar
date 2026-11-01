@@ -267,6 +267,18 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .bean-row b{font-size:16px}
 .bean-row .small{margin:0}
 .bean-for{margin-top:8px}
+.libs{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.lib-row{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.lib-row.on{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.lib-main{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;background:transparent;border:0;padding:12px 14px;position:relative}
+.lib-main .small{margin:0}
+.lib-main b{font-size:15px;padding-right:70px}
+.lib-use{position:absolute;right:12px;top:12px;font-size:13px;font-weight:600;color:var(--crema)}
+.lib-row.on .lib-use{color:var(--ok)}
+.lib-acts{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:8px 14px 10px;border-top:1px solid var(--line)}
+.lib-old{margin-top:16px}
+.lib-old summary{cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;padding:6px 0}
+.lib-row.old{opacity:.85}
 .bean-line{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:-6px 0 12px;font-size:14px}
 .bean-tip{margin:-4px 0 12px}
 .humid{margin:-4px 0 12px}
