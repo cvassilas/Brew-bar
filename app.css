@@ -272,4 +272,10 @@ dialog::backdrop{background:rgb(0 0 0 / .45)}
 .bags{display:flex;flex-direction:column;gap:6px}
 .bag{display:flex;justify-content:space-between;gap:10px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent}
 .bag span{color:var(--muted);font-size:13px;white-space:nowrap}
+.update-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;gap:10px;background:var(--surface);border-top:1px solid var(--line);
+  box-shadow:0 -4px 16px rgb(0 0 0 / .12);padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.ub-txt{flex:1;min-width:0;display:flex;flex-direction:column;font-size:14px}
+.ub-txt span{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.version-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}.pace{animation:none!important}.sf-pulse{animation:none}}

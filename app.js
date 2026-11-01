@@ -1,4 +1,5 @@
 'use strict';
+const APP_VERSION = '2026.11.01.3';   /* keep in step with version.json */
 /* Brew Bar — coffee recipes for the Timemore 064S, Bookoo Themis Ultra over Web Bluetooth, and GitHub-gist sync. */
 
 /* ---------- Icons ---------- */
@@ -394,6 +395,7 @@ function beep(n = 2) {
 function toast(msg) {
   let t = $('global-toast');
   if (!t) { t = document.createElement('p'); t.id = 'global-toast'; t.className = 'toast'; t.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);padding:10px 14px;border-radius:10px;z-index:50;max-width:calc(100vw - 32px)'; document.body.appendChild(t); }
+  const ub = $('update-bar'); t.style.bottom = ub && !ub.hidden ? 'calc(88px + env(safe-area-inset-bottom,0px))' : 'calc(16px + env(safe-area-inset-bottom,0px))';
   t.textContent = msg; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 3500);
 }
 
@@ -718,9 +720,12 @@ function home() {
     <p class="note">${Sync.on ? 'Settings sync through your GitHub gist.' : 'Settings are saved on this phone. Tap “Sync off” to share them across phones.'}
       Grind numbers assume a zero point calibrated to burr touch; if your espresso sits nearer 2.0 or 2.5, shift every brewer by the same amount.</p>
     ${themePicker()}
+    <section style="margin-top:28px"><h2 class="label">App</h2>
+      <div class="version-row"><span class="small">Version <span class="mono">${APP_VERSION}</span></span><button class="btn ghost sm" id="check-update">Check for updates</button></div></section>
     <section style="margin-top:28px"><h2 class="label">Share</h2>
       <button class="theme-opt share-opt" id="open-share"><span class="qr-mini" aria-hidden="true"></span><span class="pt"><b>Share Brew Bar</b><span>Show a QR code or send the link</span></span></button></section>`;
   $('open-share').onclick = openShare;
+  $('check-update').onclick = () => Updater.check(true);
   app.querySelectorAll('[data-theme-id]').forEach(el => el.onclick = () => { LS.set('theme', el.dataset.themeId); applyLook();
     app.querySelectorAll('[data-theme-id]').forEach(c => c.setAttribute('aria-pressed', c === el)); });
   app.querySelectorAll('[data-mode-id]').forEach(el => el.onclick = () => { LS.set('mode', el.dataset.modeId); applyLook(); renderModeBtn();
@@ -1171,10 +1176,48 @@ Sync.setState(Sync.on ? (Sync.canWrite ? 'on' : 'ro') : 'off');
 route();
 if (Sync.on) Sync.run(false);
 checkSharedGist();
+/* ---------- In-app updates ----------
+   version.json on the site says what the latest version is. When it differs, a bar offers the update;
+   nothing reloads by itself, so a brew in progress is never interrupted. */
+const Updater = {
+  latest: null,
+  async check(manual = false) {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      const j = await r.json();
+      if (j.version && j.version !== APP_VERSION) { this.latest = j; this.show(); return true; }
+      if (manual) toast(`You're on the latest version (${APP_VERSION}).`);
+    } catch (e) { if (manual) toast('Couldn\'t check for updates. Are you online?'); }
+    return false;
+  },
+  show() {
+    let bar = $('update-bar');
+    if (!bar) {
+      bar = document.createElement('div'); bar.id = 'update-bar'; bar.className = 'update-bar'; bar.setAttribute('role', 'status');
+      bar.innerHTML = `<div class="ub-txt"><b>Update available</b><span id="ub-notes"></span></div>
+        <button class="btn ghost sm" id="ub-later">Later</button><button class="btn sm" id="ub-go">Update</button>`;
+      document.body.appendChild(bar);
+      $('ub-later').onclick = () => { bar.hidden = true; };
+      $('ub-go').onclick = () => this.apply();
+    }
+    $('ub-notes').textContent = this.latest && this.latest.notes ? this.latest.notes : `Version ${this.latest.version}`;
+    bar.hidden = false;
+  },
+  async apply() {
+    if (timer.id && !await Promise.resolve(window.confirm('A brew is running. Update anyway?'))) return;
+    const go = $('ub-go'); if (go) { go.textContent = 'Updating…'; go.disabled = true; }
+    try {
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+      await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+    } catch (e) {}
+    location.reload();
+  }
+};
 if ('serviceWorker' in navigator) window.addEventListener('load', () => {
-  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
-  /* When a new version takes over, reload once so the update shows straight away. */
-  let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => Updater.check());
 });
+window.addEventListener('load', () => setTimeout(() => Updater.check(), 1500));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Updater.check(); });
+setInterval(() => { if (document.visibilityState === 'visible') Updater.check(); }, 30 * 60000);
